@@ -121,6 +121,16 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         delete from stock_group_stock where stock_id = #{stockId}
     </delete>
 
+    <select id="selectStockByCodePrefix" parameterType="String" resultMap="StockResult">
+        <include refid="selectStockVo"/>
+        where market in ('SH', 'SZ')
+        <if test="keyword != null and keyword != ''">
+            and stock_code like concat(#{keyword}, '%')
+        </if>
+        order by stock_code asc
+        limit 10
+    </select>
+
     <select id="selectStocksNotInGroup" resultMap="StockResult">
         select s.id, s.stock_code, s.stock_name, s.market,
                s.create_by, s.create_time, s.update_by, s.update_time, s.remark
@@ -132,6 +142,15 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="stock.stockName != null and stock.stockName != ''"> and s.stock_name like concat('%', #{stock.stockName}, '%')</if>
         <if test="stock.market != null and stock.market != ''"> and s.market = #{stock.market}</if>
         order by s.id desc
+    </select>
+
+    <select id="selectStocksByMarkets" resultMap="StockResult">
+        <include refid="selectStockVo"/>
+        where market in
+        <foreach collection="markets" item="market" open="(" separator="," close=")">
+            #{market}
+        </foreach>
+        order by id desc
     </select>
 
 </mapper>

@@ -45,7 +45,13 @@ public class TencentKlineDataSource implements KlineDataSource
     public List<StockKline> fetchKline(String stockCode, String market, String klineType,
                                        String startDate, String endDate)
     {
-        String prefix = "1".equals(market) ? "sh" : "sz";
+        // 兼容两种市场标识: "1"或"SH"表示沪市, "0"或"SZ"表示深市
+        String prefix;
+        if ("1".equals(market) || "SH".equalsIgnoreCase(market)) {
+            prefix = "sh";
+        } else {
+            prefix = "sz";
+        }
         String fullCode = prefix + stockCode;
         String type = convertKlineType(klineType);
 

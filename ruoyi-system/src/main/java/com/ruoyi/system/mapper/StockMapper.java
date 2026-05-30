@@ -72,4 +72,14 @@ public interface StockMapper
     public int deleteStockGroupsByStockId(Long stockId);
 
     public List<Stock> selectStocksNotInGroup(@Param("groupId") Long groupId, @Param("stock") Stock stock);
+
+    public List<Stock> selectStockByCodePrefix(@Param("keyword") String keyword);
+
+    /**
+     * 根据市场列表查询股票
+     *
+     * @param markets 市场列表
+     * @return 股票基础集合
+     */
+    public List<Stock> selectStocksByMarkets(@Param("markets") List<String> markets);
 }

@@ -84,4 +84,12 @@ public interface IStockService
      * @return 结果
      */
     public int insertStockGroups(Long stockId, Long[] groupIds);
+
+    /**
+     * 根据股票代码前缀匹配股票（仅SH/SZ市场，最多10条）
+     *
+     * @param keyword 股票代码前缀
+     * @return 股票列表
+     */
+    public List<Stock> autocompleteStockCode(String keyword);
 }

@@ -117,4 +117,10 @@ public class StockServiceImpl implements IStockService
         }
         return 0;
     }
+
+    @Override
+    public List<Stock> autocompleteStockCode(String keyword)
+    {
+        return stockMapper.selectStockByCodePrefix(keyword);
+    }
 }

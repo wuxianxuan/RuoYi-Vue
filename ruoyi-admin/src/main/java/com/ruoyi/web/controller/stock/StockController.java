@@ -115,4 +115,14 @@ public class StockController extends BaseController
     {
         return toAjax(stockService.insertStockGroups(id, groupIds));
     }
+
+    /**
+     * 股票代码前缀匹配（仅SH/SZ市场，最多10条，按代码升序）
+     */
+    @GetMapping("/autocomplete")
+    public AjaxResult autocomplete(String keyword)
+    {
+        List<Stock> list = stockService.autocompleteStockCode(keyword);
+        return success(list);
+    }
 }
