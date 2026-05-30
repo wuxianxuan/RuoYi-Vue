@@ -33,7 +33,6 @@ public class StockGroupController extends BaseController
     @Autowired
     private IStockGroupService stockGroupService;
 
-    @PreAuthorize("@ss.hasPermi('stock:group:list')")
     @GetMapping("/list")
     public TableDataInfo list(StockGroup stockGroup)
     {
@@ -42,14 +41,12 @@ public class StockGroupController extends BaseController
         return getDataTable(list);
     }
 
-    @PreAuthorize("@ss.hasPermi('stock:group:list')")
     @GetMapping(value = "/{id}")
     public AjaxResult getInfo(@PathVariable Long id)
     {
         return success(stockGroupService.selectGroupById(id));
     }
 
-    @PreAuthorize("@ss.hasPermi('stock:group:add')")
     @Log(title = "股票分组", businessType = BusinessType.INSERT)
     @PostMapping
     public AjaxResult add(@Validated @RequestBody StockGroup stockGroup)
@@ -58,7 +55,6 @@ public class StockGroupController extends BaseController
         return toAjax(stockGroupService.insertGroup(stockGroup));
     }
 
-    @PreAuthorize("@ss.hasPermi('stock:group:edit')")
     @Log(title = "股票分组", businessType = BusinessType.UPDATE)
     @PutMapping
     public AjaxResult edit(@Validated @RequestBody StockGroup stockGroup)
@@ -67,7 +63,6 @@ public class StockGroupController extends BaseController
         return toAjax(stockGroupService.updateGroup(stockGroup));
     }
 
-    @PreAuthorize("@ss.hasPermi('stock:group:remove')")
     @Log(title = "股票分组", businessType = BusinessType.DELETE)
     @DeleteMapping("/{ids}")
     public AjaxResult remove(@PathVariable Long[] ids)

@@ -24,7 +24,6 @@ public class StockKlineController extends BaseController
     @Autowired
     private IStockKlineService stockKlineService;
 
-    @PreAuthorize("@ss.hasPermi('stock:kline:query')")
     @GetMapping("/query")
     public AjaxResult query(String stockCode, String market, String klineType, String startDate, String endDate)
     {

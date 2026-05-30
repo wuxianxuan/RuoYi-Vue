@@ -29,7 +29,7 @@ import com.ruoyi.common.core.page.TableDataInfo;
  * @date 2026-05-30
  */
 @RestController
-@RequestMapping("/stock/basic")
+@RequestMapping("/stock/base")
 public class StockController extends BaseController
 {
     @Autowired
@@ -38,7 +38,6 @@ public class StockController extends BaseController
     /**
      * 查询股票基础列表
      */
-    @PreAuthorize("@ss.hasPermi('system:stock:list')")
     @GetMapping("/list")
     public TableDataInfo list(Stock stock)
     {
@@ -50,7 +49,6 @@ public class StockController extends BaseController
     /**
      * 导出股票基础列表
      */
-    @PreAuthorize("@ss.hasPermi('system:stock:export')")
     @Log(title = "股票基础", businessType = BusinessType.EXPORT)
     @PostMapping("/export")
     public void export(HttpServletResponse response, Stock stock)
@@ -63,7 +61,6 @@ public class StockController extends BaseController
     /**
      * 获取股票基础详细信息
      */
-    @PreAuthorize("@ss.hasPermi('system:stock:query')")
     @GetMapping(value = "/{id}")
     public AjaxResult getInfo(@PathVariable("id") Long id)
     {
@@ -73,7 +70,6 @@ public class StockController extends BaseController
     /**
      * 新增股票基础
      */
-    @PreAuthorize("@ss.hasPermi('system:stock:add')")
     @Log(title = "股票基础", businessType = BusinessType.INSERT)
     @PostMapping
     public AjaxResult add(@RequestBody Stock stock)
@@ -84,7 +80,6 @@ public class StockController extends BaseController
     /**
      * 修改股票基础
      */
-    @PreAuthorize("@ss.hasPermi('system:stock:edit')")
     @Log(title = "股票基础", businessType = BusinessType.UPDATE)
     @PutMapping
     public AjaxResult edit(@RequestBody Stock stock)
@@ -95,7 +90,6 @@ public class StockController extends BaseController
     /**
      * 删除股票基础
      */
-    @PreAuthorize("@ss.hasPermi('system:stock:remove')")
     @Log(title = "股票基础", businessType = BusinessType.DELETE)
 	@DeleteMapping("/{ids}")
     public AjaxResult remove(@PathVariable Long[] ids)

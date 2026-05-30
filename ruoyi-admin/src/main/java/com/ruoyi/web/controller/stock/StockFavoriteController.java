@@ -33,7 +33,6 @@ public class StockFavoriteController extends BaseController
     @Autowired
     private IStockFavoriteService stockFavoriteService;
 
-    @PreAuthorize("@ss.hasPermi('stock:favorite:list')")
     @GetMapping("/list")
     public TableDataInfo list(StockFavorite stockFavorite)
     {
@@ -42,14 +41,12 @@ public class StockFavoriteController extends BaseController
         return getDataTable(list);
     }
 
-    @PreAuthorize("@ss.hasPermi('stock:favorite:list')")
     @GetMapping(value = "/{id}")
     public AjaxResult getInfo(@PathVariable Long id)
     {
         return success(stockFavoriteService.selectFavoriteById(id));
     }
 
-    @PreAuthorize("@ss.hasPermi('stock:favorite:add')")
     @Log(title = "自选股", businessType = BusinessType.INSERT)
     @PostMapping
     public AjaxResult add(@Validated @RequestBody StockFavorite stockFavorite)
@@ -58,7 +55,6 @@ public class StockFavoriteController extends BaseController
         return toAjax(stockFavoriteService.insertFavorite(stockFavorite));
     }
 
-    @PreAuthorize("@ss.hasPermi('stock:favorite:edit')")
     @Log(title = "自选股", businessType = BusinessType.UPDATE)
     @PutMapping
     public AjaxResult edit(@Validated @RequestBody StockFavorite stockFavorite)
@@ -67,7 +63,6 @@ public class StockFavoriteController extends BaseController
         return toAjax(stockFavoriteService.updateFavorite(stockFavorite));
     }
 
-    @PreAuthorize("@ss.hasPermi('stock:favorite:remove')")
     @Log(title = "自选股", businessType = BusinessType.DELETE)
     @DeleteMapping("/{ids}")
     public AjaxResult remove(@PathVariable Long[] ids)
