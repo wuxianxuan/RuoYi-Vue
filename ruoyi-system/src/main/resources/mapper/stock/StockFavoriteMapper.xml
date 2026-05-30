@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.StockFavoriteMapper">
+
+    <resultMap type="StockFavorite" id="StockFavoriteResult">
+        <result property="id"          column="id"          />
+        <result property="stockCode"   column="stock_code"  />
+        <result property="stockName"   column="stock_name"  />
+        <result property="market"      column="market"      />
+        <result property="createBy"    column="create_by"   />
+        <result property="createTime"  column="create_time" />
+        <result property="updateBy"    column="update_by"   />
+        <result property="updateTime"  column="update_time" />
+        <result property="remark"      column="remark"      />
+    </resultMap>
+
+    <sql id="selectFavoriteVo">
+        select f.id, f.stock_code, f.stock_name, f.market,
+               f.create_by, f.create_time, f.update_by, f.update_time, f.remark
+        from stock_favorite f
+    </sql>
+
+    <select id="selectFavoriteList" parameterType="StockFavorite" resultMap="StockFavoriteResult">
+        <include refid="selectFavoriteVo"/>
+        <where>
+            <if test="stockCode != null and stockCode != ''">
+                AND f.stock_code like concat('%', #{stockCode}, '%')
+            </if>
+            <if test="stockName != null and stockName != ''">
+                AND f.stock_name like concat('%', #{stockName}, '%')
+            </if>
+            <if test="market != null and market != ''">
+                AND f.market = #{market}
+            </if>
+        </where>
+        order by f.id desc
+    </select>
+
+    <select id="selectFavoriteById" parameterType="Long" resultMap="StockFavoriteResult">
+        <include refid="selectFavoriteVo"/>
+        where f.id = #{id}
+    </select>
+
+    <insert id="insertFavorite" parameterType="StockFavorite" useGeneratedKeys="true" keyProperty="id">
+        insert into stock_favorite (
+        <if test="stockCode != null and stockCode != ''">stock_code,</if>
+        <if test="stockName != null and stockName != ''">stock_name,</if>
+        <if test="market != null and market != ''">market,</if>
+        <if test="remark != null and remark != ''">remark,</if>
+        <if test="createBy != null and createBy != ''">create_by,</if>
+        create_time
+        ) values (
+        <if test="stockCode != null and stockCode != ''">#{stockCode},</if>
+        <if test="stockName != null and stockName != ''">#{stockName},</if>
+        <if test="market != null and market != ''">#{market},</if>
+        <if test="remark != null and remark != ''">#{remark},</if>
+        <if test="createBy != null and createBy != ''">#{createBy},</if>
+        sysdate()
+        )
+    </insert>
+
+    <update id="updateFavorite" parameterType="StockFavorite">
+        update stock_favorite
+        <set>
+            <if test="stockCode != null and stockCode != ''">stock_code = #{stockCode},</if>
+            <if test="stockName != null and stockName != ''">stock_name = #{stockName},</if>
+            <if test="market != null and market != ''">market = #{market},</if>
+            <if test="remark != null">remark = #{remark},</if>
+            <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
+            update_time = sysdate()
+        </set>
+        where id = #{id}
+    </update>
+
+    <delete id="deleteFavoriteById" parameterType="Long">
+        delete from stock_favorite where id = #{id}
+    </delete>
+
+    <delete id="deleteFavoriteByIds" parameterType="Long">
+        delete from stock_favorite where id in
+        <foreach item="id" collection="array" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+    <insert id="insertFavoriteGroup">
+        insert into stock_favorite_group (favorite_id, group_id) values
+        <foreach item="groupId" collection="groupIds" separator=",">
+            (#{favoriteId}, #{groupId})
+        </foreach>
+    </insert>
+
+    <delete id="deleteFavoriteGroupByFavoriteId" parameterType="Long">
+        delete from stock_favorite_group where favorite_id = #{favoriteId}
+    </delete>
+
+    <select id="selectGroupIdsByFavoriteId" parameterType="Long" resultType="Long">
+        select group_id from stock_favorite_group where favorite_id = #{favoriteId}
+    </select>
+
+    <select id="selectFavoritesByGroupId" parameterType="Long" resultMap="StockFavoriteResult">
+        select f.id, f.stock_code, f.stock_name, f.market,
+               f.create_by, f.create_time, f.update_by, f.update_time, f.remark
+        from stock_favorite f
+                 inner join stock_favorite_group fg on f.id = fg.favorite_id
+        where fg.group_id = #{groupId}
+        order by f.id desc
+    </select>
+
+</mapper>

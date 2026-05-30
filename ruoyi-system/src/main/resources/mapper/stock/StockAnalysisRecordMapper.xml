@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.StockAnalysisRecordMapper">
+
+    <resultMap type="StockAnalysisRecord" id="StockAnalysisRecordResult">
+        <id property="id" column="id"/>
+        <result property="tradeDate" column="trade_date"/>
+        <result property="secuCode" column="secu_code"/>
+        <result property="secuName" column="secu_name"/>
+        <result property="changeRate" column="change_rate"/>
+        <result property="lastPx" column="last_px"/>
+        <result property="cmc" column="cmc"/>
+        <result property="time" column="time"/>
+        <result property="upNum" column="up_num"/>
+        <result property="upReason" column="up_reason"/>
+        <result property="plateSecuCode" column="plate_secu_code"/>
+        <result property="plateSecuName" column="plate_secu_name"/>
+        <result property="plateChangeRate" column="plate_change_rate"/>
+        <result property="plateUpReason" column="plate_up_reason"/>
+        <result property="plateStockUpNum" column="plate_stock_up_num"/>
+        <result property="upTags" column="up_tags"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <insert id="batchInsertStockAnalysisRecords" parameterType="java.util.List">
+        insert into stock_analysis_record (
+            trade_date, secu_code, secu_name, change_rate, last_px, cmc, time, up_num, up_reason,
+            plate_secu_code, plate_secu_name, plate_change_rate, plate_up_reason, plate_stock_up_num, up_tags,
+            create_by, create_time, remark
+        ) values
+        <foreach collection="list" item="item" separator=",">
+            (#{item.tradeDate}, #{item.secuCode}, #{item.secuName}, #{item.changeRate}, #{item.lastPx}, #{item.cmc}, #{item.time}, #{item.upNum}, #{item.upReason},
+            #{item.plateSecuCode}, #{item.plateSecuName}, #{item.plateChangeRate}, #{item.plateUpReason}, #{item.plateStockUpNum}, #{item.upTags},
+            #{item.createBy}, sysdate(), #{item.remark})
+        </foreach>
+        on duplicate key update
+            secu_name = values(secu_name),
+            change_rate = values(change_rate),
+            last_px = values(last_px),
+            cmc = values(cmc),
+            time = values(time),
+            up_num = values(up_num),
+            up_reason = values(up_reason),
+            plate_secu_code = values(plate_secu_code),
+            plate_secu_name = values(plate_secu_name),
+            plate_change_rate = values(plate_change_rate),
+            plate_up_reason = values(plate_up_reason),
+            plate_stock_up_num = values(plate_stock_up_num),
+            up_tags = values(up_tags),
+            update_by = 'system',
+            update_time = sysdate()
+    </insert>
+</mapper>
