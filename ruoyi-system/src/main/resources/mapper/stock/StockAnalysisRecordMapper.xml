@@ -56,4 +56,22 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             update_by = 'system',
             update_time = sysdate()
     </insert>
+    <select id="collectStockData" resultType="com.ruoyi.system.domain.stock.StockAnalysisRecord">
+        SELECT
+            id,
+            secu_code AS secuCode,
+            secu_name AS secuName
+        FROM (
+                 SELECT id, secu_code, secu_name, update_time,
+                        ROW_NUMBER() OVER (PARTITION BY secu_code ORDER BY update_time DESC) AS rn
+                 FROM stock_analysis_record
+                 <where>
+                     <if test="dateStr != null and dateStr != ''">
+                         trade_date > #{dateStr}
+                     </if>
+                 </where>
+             ) t
+        WHERE rn = 1
+        ORDER BY secu_code
+    </select>
 </mapper>

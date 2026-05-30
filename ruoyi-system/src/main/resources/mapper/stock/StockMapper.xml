@@ -57,6 +57,19 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="remark != null">#{remark},</if>
          </trim>
     </insert>
+    <insert id="batchInsertListIgnoreSame" parameterType="java.util.List">
+        insert into stock (
+        stock_code, stock_name, market, create_by, create_time, update_by, update_time, remark
+        ) values
+        <foreach collection="list" item="item" separator=",">
+            (#{item.stockCode}, #{item.stockName}, #{item.market}, 'system',sysdate(),'system', sysdate(), #{item.remark})
+        </foreach>
+        on duplicate key update
+        stock_name = values(stock_name),
+        market = values(market),
+        update_by = 'system',
+        update_time = sysdate()
+    </insert>
 
     <update id="updateStock" parameterType="Stock">
         update stock

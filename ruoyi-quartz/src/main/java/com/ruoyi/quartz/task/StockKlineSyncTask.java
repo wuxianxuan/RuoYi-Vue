@@ -1,12 +1,14 @@
-package com.ruoyi.system.task;
+package com.ruoyi.quartz.task;
 
 import com.ruoyi.system.domain.stock.StockFavorite;
+import com.ruoyi.system.mapper.StockFavoriteMapper;
+import com.ruoyi.system.service.IStockKlineService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import com.ruoyi.system.mapper.StockFavoriteMapper;
-import com.ruoyi.system.service.IStockKlineService;
+
+import java.util.List;
 
 /**
  * 股票K线数据定时同步任务
@@ -30,7 +32,7 @@ public class StockKlineSyncTask
     {
         log.info("开始同步自选股K线数据");
         StockFavorite query = new StockFavorite();
-        java.util.List<StockFavorite> favorites = stockFavoriteMapper.selectFavoriteList(query);
+        List<StockFavorite> favorites = stockFavoriteMapper.selectFavoriteList(query);
         if (favorites == null || favorites.isEmpty())
         {
             log.info("无自选股需要同步");

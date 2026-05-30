@@ -20,4 +20,8 @@ public class TradingDayUtils {
         }
         return allDays;
     }
+
+    public static String getDateStr(LocalDate localDate) {
+       return localDate.format(DATE_FORMATTER);
+    }
 }

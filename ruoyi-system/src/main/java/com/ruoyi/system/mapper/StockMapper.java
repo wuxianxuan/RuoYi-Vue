@@ -59,4 +59,6 @@ public interface StockMapper
      * @return 结果
      */
     public int deleteStockByIds(Long[] ids);
+
+    void batchInsertListIgnoreSame(List<Stock> insertList);
 }
