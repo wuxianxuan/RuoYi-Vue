@@ -91,9 +91,47 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </delete>
 
     <delete id="deleteStockByIds" parameterType="String">
-        delete from stock where id in 
+        delete from stock where id in
         <foreach item="id" collection="array" open="(" separator="," close=")">
             #{id}
         </foreach>
     </delete>
+
+    <select id="selectStocksByGroupId" parameterType="Long" resultMap="StockResult">
+        select s.id, s.stock_code, s.stock_name, s.market,
+               s.create_by, s.create_time, s.update_by, s.update_time, s.remark
+        from stock s
+        inner join stock_group_stock sgs on s.id = sgs.stock_id
+        where sgs.group_id = #{groupId}
+        order by s.id desc
+    </select>
+
+    <select id="selectGroupIdsByStockId" parameterType="Long" resultType="Long">
+        select group_id from stock_group_stock where stock_id = #{stockId}
+    </select>
+
+    <insert id="insertStockGroups">
+        insert into stock_group_stock (stock_id, group_id) values
+        <foreach item="groupId" collection="groupIds" separator=",">
+            (#{stockId}, #{groupId})
+        </foreach>
+    </insert>
+
+    <delete id="deleteStockGroupsByStockId" parameterType="Long">
+        delete from stock_group_stock where stock_id = #{stockId}
+    </delete>
+
+    <select id="selectStocksNotInGroup" resultMap="StockResult">
+        select s.id, s.stock_code, s.stock_name, s.market,
+               s.create_by, s.create_time, s.update_by, s.update_time, s.remark
+        from stock s
+        where s.id not in (
+            select stock_id from stock_group_stock where group_id = #{groupId}
+        )
+        <if test="stock.stockCode != null and stock.stockCode != ''"> and s.stock_code = #{stock.stockCode}</if>
+        <if test="stock.stockName != null and stock.stockName != ''"> and s.stock_name like concat('%', #{stock.stockName}, '%')</if>
+        <if test="stock.market != null and stock.market != ''"> and s.market = #{stock.market}</if>
+        order by s.id desc
+    </select>
+
 </mapper>

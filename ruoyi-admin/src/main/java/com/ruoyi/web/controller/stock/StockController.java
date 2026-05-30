@@ -91,9 +91,28 @@ public class StockController extends BaseController
      * 删除股票基础
      */
     @Log(title = "股票基础", businessType = BusinessType.DELETE)
-	@DeleteMapping("/{ids}")
+    @DeleteMapping("/{ids}")
     public AjaxResult remove(@PathVariable Long[] ids)
     {
         return toAjax(stockService.deleteStockByIds(ids));
+    }
+
+    /**
+     * 获取股票所属的分组
+     */
+    @GetMapping("/{id}/groups")
+    public AjaxResult getGroups(@PathVariable Long id)
+    {
+        return success(stockService.selectGroupIdsByStockId(id));
+    }
+
+    /**
+     * 将股票关联到分组
+     */
+    @Log(title = "股票基础", businessType = BusinessType.UPDATE)
+    @PostMapping("/{id}/groups")
+    public AjaxResult bindGroups(@PathVariable Long id, @RequestBody Long[] groupIds)
+    {
+        return toAjax(stockService.insertStockGroups(id, groupIds));
     }
 }

@@ -54,9 +54,34 @@ public interface IStockService
 
     /**
      * 删除股票基础信息
-     * 
+     *
      * @param id 股票基础主键
      * @return 结果
      */
     public int deleteStockById(Long id);
+
+    /**
+     * 根据分组ID查询股票列表
+     *
+     * @param groupId 分组ID
+     * @return 股票列表
+     */
+    public List<Stock> selectStocksByGroupId(Long groupId);
+
+    /**
+     * 查询股票所属的分组ID列表
+     *
+     * @param stockId 股票ID
+     * @return 分组ID数组
+     */
+    public Long[] selectGroupIdsByStockId(Long stockId);
+
+    /**
+     * 将股票关联到分组
+     *
+     * @param stockId 股票ID
+     * @param groupIds 分组ID数组
+     * @return 结果
+     */
+    public int insertStockGroups(Long stockId, Long[] groupIds);
 }

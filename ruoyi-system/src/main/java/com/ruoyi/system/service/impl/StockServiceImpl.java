@@ -73,7 +73,7 @@ public class StockServiceImpl implements IStockService
 
     /**
      * 批量删除股票基础
-     * 
+     *
      * @param ids 需要删除的股票基础主键
      * @return 结果
      */
@@ -85,7 +85,7 @@ public class StockServiceImpl implements IStockService
 
     /**
      * 删除股票基础信息
-     * 
+     *
      * @param id 股票基础主键
      * @return 结果
      */
@@ -93,5 +93,28 @@ public class StockServiceImpl implements IStockService
     public int deleteStockById(Long id)
     {
         return stockMapper.deleteStockById(id);
+    }
+
+    @Override
+    public List<Stock> selectStocksByGroupId(Long groupId)
+    {
+        return stockMapper.selectStocksByGroupId(groupId);
+    }
+
+    @Override
+    public Long[] selectGroupIdsByStockId(Long stockId)
+    {
+        return stockMapper.selectGroupIdsByStockId(stockId);
+    }
+
+    @Override
+    public int insertStockGroups(Long stockId, Long[] groupIds)
+    {
+        stockMapper.deleteStockGroupsByStockId(stockId);
+        if (groupIds != null && groupIds.length > 0)
+        {
+            return stockMapper.insertStockGroups(stockId, groupIds);
+        }
+        return 0;
     }
 }

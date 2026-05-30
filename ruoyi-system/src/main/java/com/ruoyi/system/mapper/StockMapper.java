@@ -1,6 +1,7 @@
 package com.ruoyi.system.mapper;
 
 import com.ruoyi.system.domain.stock.Stock;
+import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
@@ -61,4 +62,14 @@ public interface StockMapper
     public int deleteStockByIds(Long[] ids);
 
     void batchInsertListIgnoreSame(List<Stock> insertList);
+
+    public List<Stock> selectStocksByGroupId(Long groupId);
+
+    public Long[] selectGroupIdsByStockId(Long stockId);
+
+    public int insertStockGroups(@Param("stockId") Long stockId, @Param("groupIds") Long[] groupIds);
+
+    public int deleteStockGroupsByStockId(Long stockId);
+
+    public List<Stock> selectStocksNotInGroup(@Param("groupId") Long groupId, @Param("stock") Stock stock);
 }

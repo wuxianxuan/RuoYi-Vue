@@ -2,6 +2,7 @@ package com.ruoyi.web.controller.stock;
 
 import java.util.List;
 
+import com.ruoyi.system.domain.stock.Stock;
 import com.ruoyi.system.domain.stock.StockGroup;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -75,5 +76,45 @@ public class StockGroupController extends BaseController
     {
         List<StockGroup> list = stockGroupService.selectGroupList(new StockGroup());
         return success(list);
+    }
+
+    /**
+     * 获取分组下的股票列表
+     */
+    @GetMapping("/{id}/stocks")
+    public AjaxResult getStocks(@PathVariable Long id)
+    {
+        return success(stockGroupService.selectStocksByGroupId(id));
+    }
+
+    /**
+     * 批量添加股票到分组
+     */
+    @Log(title = "股票分组", businessType = BusinessType.UPDATE)
+    @PostMapping("/{id}/stocks")
+    public AjaxResult addStocks(@PathVariable Long id, @RequestBody Long[] stockIds)
+    {
+        return toAjax(stockGroupService.insertGroupStocks(id, stockIds));
+    }
+
+    /**
+     * 从分组中移除股票
+     */
+    @Log(title = "股票分组", businessType = BusinessType.UPDATE)
+    @DeleteMapping("/{id}/stocks")
+    public AjaxResult removeStocks(@PathVariable Long id, @RequestBody Long[] stockIds)
+    {
+        return toAjax(stockGroupService.deleteGroupStocks(id, stockIds));
+    }
+
+    /**
+     * 查询不在该分组的股票（用于新增弹窗）
+     */
+    @GetMapping("/{id}/stocks/exclude")
+    public TableDataInfo listExcludeStocks(@PathVariable Long id, Stock stock)
+    {
+        startPage();
+        List<Stock> list = stockGroupService.selectStocksNotInGroup(id, stock);
+        return getDataTable(list);
     }
 }

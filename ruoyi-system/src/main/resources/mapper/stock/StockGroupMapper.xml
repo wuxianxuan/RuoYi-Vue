@@ -74,4 +74,22 @@
         </foreach>
     </delete>
 
+    <insert id="insertGroupStocks">
+        insert into stock_group_stock (group_id, stock_id) values
+        <foreach item="stockId" collection="stockIds" separator=",">
+            (#{groupId}, #{stockId})
+        </foreach>
+    </insert>
+
+    <delete id="deleteGroupStocks">
+        delete from stock_group_stock where group_id = #{groupId} and stock_id in
+        <foreach item="stockId" collection="stockIds" open="(" separator="," close=")">
+            #{stockId}
+        </foreach>
+    </delete>
+
+    <delete id="deleteGroupStocksByGroupId" parameterType="Long">
+        delete from stock_group_stock where group_id = #{groupId}
+    </delete>
+
 </mapper>
