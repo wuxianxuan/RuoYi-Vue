@@ -103,4 +103,22 @@
         delete from stock_kline where stock_code = #{stockCode} and kline_type = #{klineType}
     </delete>
 
+    <select id="selectKlineByCodesAndDays" resultMap="StockKlineResult">
+        <include refid="selectKlineVo"/>
+        where kline_type = #{klineType}
+        <if test="stockCodes != null and stockCodes.size() > 0">
+            and stock_code in
+            <foreach collection="stockCodes" item="code" open="(" separator="," close=")">
+                #{code}
+            </foreach>
+        </if>
+        <if test="startDate != null and startDate != ''">
+            and trade_time &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            and trade_time &lt;= #{endDate}
+        </if>
+        order by stock_code asc, trade_time asc
+    </select>
+
 </mapper>

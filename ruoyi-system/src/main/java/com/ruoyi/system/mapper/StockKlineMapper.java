@@ -20,4 +20,12 @@ public interface StockKlineMapper {
     public int insertIgnoreKlineBatch(List<StockKline> klineList);
 
     public int deleteKlineByCodeType(String stockCode, String klineType);
+
+    /**
+     * 批量查询多个股票在指定日期范围内的K线数据
+     */
+    public List<StockKline> selectKlineByCodesAndDays(@Param("stockCodes") List<String> stockCodes,
+                                                       @Param("klineType") String klineType,
+                                                       @Param("startDate") String startDate,
+                                                       @Param("endDate") String endDate);
 }

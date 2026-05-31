@@ -79,12 +79,14 @@ public class StockGroupController extends BaseController
     }
 
     /**
-     * 获取分组下的股票列表
+     * 获取分组下的股票列表（分页）
      */
     @GetMapping("/{id}/stocks")
-    public AjaxResult getStocks(@PathVariable Long id)
+    public TableDataInfo getStocks(@PathVariable Long id)
     {
-        return success(stockGroupService.selectStocksByGroupId(id));
+        startPage();
+        List<Stock> list = stockGroupService.selectStocksByGroupId(id);
+        return getDataTable(list);
     }
 
     /**
