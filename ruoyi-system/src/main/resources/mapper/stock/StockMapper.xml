@@ -1,14 +1,15 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper
-PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
-"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.ruoyi.system.mapper.StockMapper">
-    
+
     <resultMap type="Stock" id="StockResult">
         <result property="id"    column="id"    />
         <result property="stockCode"    column="stock_code"    />
         <result property="stockName"    column="stock_name"    />
         <result property="market"    column="market"    />
+        <result property="industryName" column="industry_name" />
         <result property="createBy"    column="create_by"    />
         <result property="createTime"    column="create_time"    />
         <result property="updateBy"    column="update_by"    />
@@ -17,18 +18,45 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </resultMap>
 
     <sql id="selectStockVo">
-        select id, stock_code, stock_name, market, create_by, create_time, update_by, update_time, remark from stock
+        select id, stock_code, stock_name, market, industry_name, create_by, create_time, update_by, update_time, remark from stock
     </sql>
 
     <select id="selectStockList" parameterType="Stock" resultMap="StockResult">
-        <include refid="selectStockVo"/>
-        <where>  
-            <if test="stockCode != null  and stockCode != ''"> and stock_code = #{stockCode}</if>
-            <if test="stockName != null  and stockName != ''"> and stock_name like concat('%', #{stockName}, '%')</if>
-            <if test="market != null  and market != ''"> and market = #{market}</if>
+        select s.id, s.stock_code, s.stock_name, s.market, s.industry_name,
+        s.create_by, s.create_time, s.update_by, s.update_time, s.remark
+        from stock s
+        <where>
+            <if test="stockCode != null  and stockCode != ''"> and s.stock_code = #{stockCode}</if>
+            <if test="stockName != null  and stockName != ''"> and s.stock_name like concat('%', #{stockName}, '%')</if>
+            <if test="market != null  and market != ''"> and s.market = #{market}</if>
+            <if test="industryId != null">
+                and EXISTS (
+                select 1 from stock_plate_stock sps
+                inner join stock_plate sp on sps.plate_id = sp.id
+                where sps.stock_id = s.id and sp.plate_type = 'INDUSTRY'
+                and (sp.id = #{industryId} or FIND_IN_SET(#{industryId}, sp.ancestors))
+                )
+            </if>
+            <if test="conceptIds != null and conceptIds.length > 0">
+                and EXISTS (
+                select 1 from stock_plate_stock sps2
+                inner join stock_plate sp2 on sps2.plate_id = sp2.id
+                where sps2.stock_id = s.id and sp2.plate_type = 'CONCEPT'
+                and sp2.id in
+                <foreach item="conceptId" collection="conceptIds" open="(" separator="," close=")">
+                    #{conceptId}
+                </foreach>
+                )
+            </if>
+            <if test="groupId != null">
+                and EXISTS (
+                    select 1 from stock_group_stock sgs
+                    where sgs.stock_id = s.id and sgs.group_id = #{groupId}
+                )
+            </if>
         </where>
     </select>
-    
+
     <select id="selectStockById" parameterType="Long" resultMap="StockResult">
         <include refid="selectStockVo"/>
         where id = #{id}
@@ -45,7 +73,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="updateBy != null">update_by,</if>
             <if test="updateTime != null">update_time,</if>
             <if test="remark != null">remark,</if>
-         </trim>
+        </trim>
         <trim prefix="values (" suffix=")" suffixOverrides=",">
             <if test="stockCode != null and stockCode != ''">#{stockCode},</if>
             <if test="stockName != null and stockName != ''">#{stockName},</if>
@@ -55,7 +83,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="updateBy != null">#{updateBy},</if>
             <if test="updateTime != null">#{updateTime},</if>
             <if test="remark != null">#{remark},</if>
-         </trim>
+        </trim>
     </insert>
     <insert id="batchInsertListIgnoreSame" parameterType="java.util.List">
         insert into stock (
@@ -101,7 +129,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select s.id, s.stock_code, s.stock_name, s.market,
                s.create_by, s.create_time, s.update_by, s.update_time, s.remark
         from stock s
-        inner join stock_group_stock sgs on s.id = sgs.stock_id
+                 inner join stock_group_stock sgs on s.id = sgs.stock_id
         where sgs.group_id = #{groupId}
         order by s.id desc
     </select>
@@ -133,10 +161,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <select id="selectStocksNotInGroup" resultMap="StockResult">
         select s.id, s.stock_code, s.stock_name, s.market,
-               s.create_by, s.create_time, s.update_by, s.update_time, s.remark
+        s.create_by, s.create_time, s.update_by, s.update_time, s.remark
         from stock s
         where s.id not in (
-            select stock_id from stock_group_stock where group_id = #{groupId}
+        select stock_id from stock_group_stock where group_id = #{groupId}
         )
         <if test="stock.stockCode != null and stock.stockCode != ''"> and s.stock_code = #{stock.stockCode}</if>
         <if test="stock.stockName != null and stock.stockName != ''"> and s.stock_name like concat('%', #{stock.stockName}, '%')</if>
@@ -152,5 +180,4 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </foreach>
         order by id desc
     </select>
-
 </mapper>

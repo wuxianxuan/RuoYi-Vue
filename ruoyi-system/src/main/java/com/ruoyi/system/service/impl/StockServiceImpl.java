@@ -1,9 +1,11 @@
 package com.ruoyi.system.service.impl;
 
 import java.util.List;
+import java.util.Map;
 
 import com.ruoyi.system.domain.stock.Stock;
 import com.ruoyi.common.utils.DateUtils;
+import com.ruoyi.system.mapper.StockPlateMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import com.ruoyi.system.mapper.StockMapper;
@@ -20,6 +22,8 @@ public class StockServiceImpl implements IStockService
 {
     @Autowired
     private StockMapper stockMapper;
+    @Autowired
+    private StockPlateMapper stockPlateMapper;
 
     /**
      * 查询股票基础
@@ -42,7 +46,22 @@ public class StockServiceImpl implements IStockService
     @Override
     public List<Stock> selectStockList(Stock stock)
     {
-        return stockMapper.selectStockList(stock);
+        List<Stock> list = stockMapper.selectStockList(stock);
+        // 分页后二次查询填充概念名称
+        if (list != null && !list.isEmpty()) {
+            List<Long> stockIds = list.stream().map(Stock::getId).collect(java.util.stream.Collectors.toList());
+            List<Map<String, Object>> conceptMappings = stockPlateMapper.selectConceptNamesByStockIds(stockIds);
+            Map<Long, List<String>> conceptMap = new java.util.HashMap<>();
+            for (Map<String, Object> mapping : conceptMappings) {
+                Long stockId = ((Number) mapping.get("stockId")).longValue();
+                String conceptName = (String) mapping.get("conceptName");
+                conceptMap.computeIfAbsent(stockId, k -> new java.util.ArrayList<>()).add(conceptName);
+            }
+            for (Stock s : list) {
+                s.setConceptNames(conceptMap.getOrDefault(s.getId(), java.util.Collections.emptyList()));
+            }
+        }
+        return list;
     }
 
     /**

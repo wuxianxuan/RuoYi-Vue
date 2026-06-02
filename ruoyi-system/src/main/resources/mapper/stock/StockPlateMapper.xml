@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.StockPlateMapper">
+
+    <resultMap type="StockPlate" id="StockPlateResult">
+        <result property="id"          column="id"          />
+        <result property="plateName"   column="plate_name"  />
+        <result property="plateType"   column="plate_type"  />
+        <result property="parentId"    column="parent_id"   />
+        <result property="ancestors"   column="ancestors"   />
+        <result property="level"       column="level"       />
+        <result property="sortOrder"   column="sort_order"  />
+        <result property="createBy"    column="create_by"   />
+        <result property="createTime"  column="create_time" />
+        <result property="updateBy"    column="update_by"   />
+        <result property="updateTime"  column="update_time" />
+        <result property="remark"      column="remark"      />
+    </resultMap>
+
+    <sql id="selectPlateVo">
+        select id, plate_name, plate_type, parent_id, ancestors, level, sort_order,
+               create_by, create_time, update_by, update_time, remark
+        from stock_plate
+    </sql>
+
+    <select id="selectPlateList" parameterType="StockPlate" resultMap="StockPlateResult">
+        <include refid="selectPlateVo"/>
+        <where>
+            <if test="plateName != null and plateName != ''">
+                AND plate_name like concat('%', #{plateName}, '%')
+            </if>
+            <if test="plateType != null and plateType != ''">
+                AND plate_type = #{plateType}
+            </if>
+            <if test="parentId != null">
+                AND parent_id = #{parentId}
+            </if>
+        </where>
+        order by sort_order asc, id desc
+    </select>
+
+    <select id="selectPlateById" parameterType="Long" resultMap="StockPlateResult">
+        <include refid="selectPlateVo"/>
+        where id = #{id}
+    </select>
+
+    <select id="selectIndustryPlateList" resultMap="StockPlateResult">
+        <include refid="selectPlateVo"/>
+        where plate_type = 'INDUSTRY'
+        order by sort_order asc, id asc
+    </select>
+
+    <insert id="insertPlate" parameterType="StockPlate" useGeneratedKeys="true" keyProperty="id">
+        insert into stock_plate (
+        <if test="plateName != null and plateName != ''">plate_name,</if>
+        <if test="plateType != null and plateType != ''">plate_type,</if>
+        <if test="parentId != null">parent_id,</if>
+        <if test="ancestors != null and ancestors != ''">ancestors,</if>
+        <if test="level != null">level,</if>
+        <if test="sortOrder != null">sort_order,</if>
+        <if test="remark != null and remark != ''">remark,</if>
+        <if test="createBy != null and createBy != ''">create_by,</if>
+        create_time
+        ) values (
+        <if test="plateName != null and plateName != ''">#{plateName},</if>
+        <if test="plateType != null and plateType != ''">#{plateType},</if>
+        <if test="parentId != null">#{parentId},</if>
+        <if test="ancestors != null and ancestors != ''">#{ancestors},</if>
+        <if test="level != null">#{level},</if>
+        <if test="sortOrder != null">#{sortOrder},</if>
+        <if test="remark != null and remark != ''">#{remark},</if>
+        <if test="createBy != null and createBy != ''">#{createBy},</if>
+        sysdate()
+        )
+    </insert>
+
+    <update id="updatePlate" parameterType="StockPlate">
+        update stock_plate
+        <set>
+            <if test="plateName != null and plateName != ''">plate_name = #{plateName},</if>
+            <if test="plateType != null and plateType != ''">plate_type = #{plateType},</if>
+            <if test="parentId != null">parent_id = #{parentId},</if>
+            <if test="ancestors != null">ancestors = #{ancestors},</if>
+            <if test="level != null">level = #{level},</if>
+            <if test="sortOrder != null">sort_order = #{sortOrder},</if>
+            <if test="remark != null">remark = #{remark},</if>
+            <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
+            update_time = sysdate()
+        </set>
+        where id = #{id}
+    </update>
+
+    <delete id="deletePlateById" parameterType="Long">
+        delete from stock_plate where id = #{id}
+    </delete>
+
+    <delete id="deletePlateByIds" parameterType="Long">
+        delete from stock_plate where id in
+        <foreach item="id" collection="array" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+    <select id="hasChildByParentId" parameterType="Long" resultType="int">
+        select count(1) from stock_plate where parent_id = #{parentId}
+    </select>
+
+    <!-- 板块下的关联股票 -->
+    <select id="selectPlateStocksByPlateId" parameterType="Long" resultMap="com.ruoyi.system.mapper.StockMapper.StockResult">
+        select s.id, s.stock_code, s.stock_name, s.market, s.industry_name,
+               s.create_by, s.create_time, s.update_by, s.update_time, s.remark
+        from stock s
+                 inner join stock_plate_stock sps on s.id = sps.stock_id
+        where sps.plate_id = #{plateId}
+        order by s.id desc
+    </select>
+
+    <!-- 股票关联的板块ID列表 -->
+    <select id="selectPlateIdsByStockId" parameterType="Long" resultType="Long">
+        select plate_id from stock_plate_stock where stock_id = #{stockId}
+    </select>
+
+    <!-- 批量添加板块-股票关联 -->
+    <insert id="insertPlateStocks">
+        insert into stock_plate_stock (plate_id, stock_id) values
+        <foreach item="stockId" collection="stockIds" separator=",">
+            (#{plateId}, #{stockId})
+        </foreach>
+    </insert>
+
+    <!-- 批量删除板块-股票关联 -->
+    <delete id="deletePlateStocks">
+        delete from stock_plate_stock where plate_id = #{plateId} and stock_id in
+        <foreach item="stockId" collection="stockIds" open="(" separator="," close=")">
+            #{stockId}
+        </foreach>
+    </delete>
+
+    <!-- 删除板块下所有股票关联 -->
+    <delete id="deletePlateStocksByPlateId" parameterType="Long">
+        delete from stock_plate_stock where plate_id = #{plateId}
+    </delete>
+
+    <!-- 根据股票代码批量匹配 -->
+    <select id="selectStocksByCodeBatch" resultMap="com.ruoyi.system.mapper.StockMapper.StockResult">
+        select s.id, s.stock_code, s.stock_name, s.market, s.industry_name,
+        s.create_by, s.create_time, s.update_by, s.update_time, s.remark
+        from stock s
+        where s.stock_code in
+        <foreach item="stockCode" collection="stockCodes" open="(" separator="," close=")">
+            #{stockCode}
+        </foreach>
+    </select>
+
+    <!-- 查询后代板块ID列表（FIND_IN_SET） -->
+    <select id="selectDescendantPlateIds" parameterType="Long" resultType="Long">
+        select id from stock_plate where FIND_IN_SET(#{plateId}, ancestors)
+    </select>
+
+    <!-- 根据ID列表查询板块 -->
+    <select id="selectPlatesByIds" resultMap="StockPlateResult">
+        <include refid="selectPlateVo"/>
+        where id in
+        <foreach item="id" collection="ids" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        order by level asc
+    </select>
+
+    <!-- 查询股票关联的行业板块ID -->
+    <select id="selectIndustryPlateIdsByStockId" parameterType="Long" resultType="Long">
+        select sps.plate_id from stock_plate_stock sps
+                                     inner join stock_plate sp on sps.plate_id = sp.id
+        where sps.stock_id = #{stockId} and sp.plate_type = 'INDUSTRY'
+    </select>
+
+    <!-- 更新股票的 industry_name -->
+    <update id="updateStockIndustryName">
+        update stock set industry_name = #{industryName} where id = #{stockId}
+    </update>
+
+    <!-- 按名称+类型精确查询板块 -->
+    <select id="selectPlateByNameAndType" resultMap="StockPlateResult">
+        <include refid="selectPlateVo"/>
+        where plate_name = #{plateName} and plate_type = #{plateType}
+        limit 1
+    </select>
+
+    <!-- 批量查询概念关联 -->
+    <select id="selectConceptNamesByStockIds" resultType="java.util.HashMap">
+        select sps.stock_id as stockId, sp.plate_name as conceptName
+        from stock_plate_stock sps
+        inner join stock_plate sp on sps.plate_id = sp.id
+        where sp.plate_type = 'CONCEPT'
+        and sps.stock_id in
+        <foreach item="stockId" collection="stockIds" open="(" separator="," close=")">
+            #{stockId}
+        </foreach>
+        order by sps.stock_id, sp.sort_order asc
+    </select>
+
+</mapper>
