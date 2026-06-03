@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 /**
  * 趋势反转股票检测定时任务
  *
- * 检测最近一段时间先下跌、最近2-3天上涨的股票（由跌转涨的趋势反转信号），
+ * 检测近期趋势下跌、但最近2天上涨（且上影线长于下影线）的股票，
  * 创建以当前日期为名称的股票分组，将符合条件的股票关联到该分组。
  *
  * 通过 RuoYi 定时任务管理页面配置，调用目标字符串: stockTrendReversalTask.detect()
@@ -37,14 +37,9 @@ public class StockTrendReversalTask
     private static final int MIN_KLINES = 20;
     /** 从数据库拉取的日历天数（覆盖约20个交易日） */
     private static final int CALENDAR_LOOKBACK = 45;
-    /** 近期上涨检查的天数（最近N天连续上涨） */
-    private static final int RECENT_RISE_DAYS = 3;
-    /** 反弹幅度阈值：当前收盘价需高于近期最低价的百分比 */
-    private static final BigDecimal REBOUND_THRESHOLD = new BigDecimal("1.02");
-    /** 下跌幅度阈值：前期高点到低点至少跌多少百分比 */
-    private static final BigDecimal DECLINE_THRESHOLD = new BigDecimal("0.97");
-
-    @Autowired
+    /** 近期上涨天数（最近2天连续上涨） */
+    private static final int RECENT_RISE_DAYS = 2;
+@Autowired
     private StockMapper stockMapper;
 
     @Autowired
@@ -148,10 +143,9 @@ public class StockTrendReversalTask
      * 检测单只股票是否存在趋势反转信号
      *
      * 规则：
-     * 1. 最近N天收盘价连续上涨
-     * 2. 前期存在明显的下跌趋势（高点→低点跌幅 ≥ 3%）
-     * 3. 前期低点发生在高点之后（确认先跌后涨的时间顺序）
-     * 4. 当前收盘价相比前期低点有一定反弹幅度（≥ 2%）
+     * 1. 最近2天收盘价连续上涨
+     * 2. 上涨日的上影线长于下影线（上影线 = 最高价 - max(开盘价,收盘价)，下影线 = min(开盘价,收盘价) - 最低价）
+     * 3. 前期（最近上涨之前）收盘价线性回归斜率为负，即整体处于下跌趋势
      *
      * @param klines 按trade_time升序排列的日K线列表
      * @return true=存在趋势反转信号
@@ -160,7 +154,7 @@ public class StockTrendReversalTask
     {
         int n = klines.size();
 
-        // ---- 规则1: 最近N天收盘价连续上涨 ----
+        // ---- 规则1: 最近2天收盘价连续上涨 ----
         for (int i = n - RECENT_RISE_DAYS; i < n - 1; i++)
         {
             BigDecimal today = klines.get(i).getClosePrice();
@@ -171,60 +165,70 @@ public class StockTrendReversalTask
             }
         }
 
-        // 当前最新收盘价
-        BigDecimal currentClose = klines.get(n - 1).getClosePrice();
-        if (currentClose == null) return false;
+        // ---- 规则2: 上涨日上影线 > 下影线 ----
+        for (int i = n - RECENT_RISE_DAYS; i < n; i++)
+        {
+            StockKline k = klines.get(i);
+            BigDecimal open = k.getOpenPrice();
+            BigDecimal close = k.getClosePrice();
+            BigDecimal high = k.getHighPrice();
+            BigDecimal low = k.getLowPrice();
 
-        // ---- 规则2: 前期存在下跌（在最近上涨之前的区间 [0, n-RECENT_RISE_DAYS) 内） ----
-        int priorEnd = n - RECENT_RISE_DAYS; // 前期区间的结束位置（不含）
+            if (open == null || close == null || high == null || low == null)
+            {
+                return false;
+            }
 
-        BigDecimal maxClose = null;
-        int maxIndex = -1;
-        BigDecimal minClose = null;
-        int minIndex = -1;
+            // 上影线 = 最高价 - max(开盘价, 收盘价)
+            BigDecimal upperShadow = high.subtract(open.max(close));
+            // 下影线 = min(开盘价, 收盘价) - 最低价
+            BigDecimal lowerShadow = open.min(close).subtract(low);
 
-        for (int i = 0; i < priorEnd; i++)
+            if (upperShadow.compareTo(lowerShadow) <= 0)
+            {
+                return false;
+            }
+        }
+
+        // ---- 规则3: 前期线性回归斜率 < 0（下跌趋势） ----
+        int priorEnd = n - RECENT_RISE_DAYS;
+        if (priorEnd < 5)
+        {
+            return false; // 前期样本不足，无法判定趋势
+        }
+
+        // 构建 (x, y) 序列：x = 索引, y = 收盘价
+        int m = priorEnd;
+        BigDecimal sumX = BigDecimal.ZERO;
+        BigDecimal sumY = BigDecimal.ZERO;
+        BigDecimal sumXY = BigDecimal.ZERO;
+        BigDecimal sumX2 = BigDecimal.ZERO;
+
+        for (int i = 0; i < m; i++)
         {
             BigDecimal close = klines.get(i).getClosePrice();
-            if (close == null) continue;
-            if (maxClose == null || close.compareTo(maxClose) > 0)
-            {
-                maxClose = close;
-                maxIndex = i;
-            }
-            if (minClose == null || close.compareTo(minClose) < 0)
-            {
-                minClose = close;
-                minIndex = i;
-            }
+            if (close == null) return false;
+
+            BigDecimal xi = BigDecimal.valueOf(i);
+            sumX = sumX.add(xi);
+            sumY = sumY.add(close);
+            sumXY = sumXY.add(xi.multiply(close));
+            sumX2 = sumX2.add(xi.multiply(xi));
         }
 
-        if (maxClose == null || minClose == null || maxIndex < 0 || minIndex < 0)
+        // slope = (m * Σxy - Σx * Σy) / (m * Σx² - (Σx)²)
+        BigDecimal mM = BigDecimal.valueOf(m);
+        BigDecimal numerator = mM.multiply(sumXY).subtract(sumX.multiply(sumY));
+        BigDecimal denominator = mM.multiply(sumX2).subtract(sumX.multiply(sumX));
+
+        if (denominator.compareTo(BigDecimal.ZERO) == 0)
         {
             return false;
         }
 
-        // ---- 规则3: 低点发生在高点之后（先跌后涨的时间顺序） ----
-        if (minIndex <= maxIndex)
-        {
-            return false;
-        }
-
-        // ---- 规则4: 跌幅足够大（高点→低点跌幅 ≥ 3%） ----
-        BigDecimal declineRatio = minClose.divide(maxClose, 4, RoundingMode.HALF_UP);
-        if (declineRatio.compareTo(DECLINE_THRESHOLD) > 0)
-        {
-            // 跌幅不足3%
-            return false;
-        }
-
-        // ---- 规则5: 当前价相比低点有反弹（≥ 2%） ----
-        if (currentClose.compareTo(minClose.multiply(REBOUND_THRESHOLD)) < 0)
-        {
-            return false;
-        }
-
-        return true;
+        // 斜率为负 → 下跌趋势
+        BigDecimal slope = numerator.divide(denominator, 8, RoundingMode.HALF_UP);
+        return slope.compareTo(BigDecimal.ZERO) < 0;
     }
 
     /**
