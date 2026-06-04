@@ -10,6 +10,17 @@
         <result property="stockName"    column="stock_name"    />
         <result property="market"    column="market"    />
         <result property="industryName" column="industry_name" />
+        <result property="peRatio"       column="pe_ratio"            />
+        <result property="totalMarketCap" column="total_market_cap"   />
+        <result property="circMarketCap"  column="circ_market_cap"    />
+        <result property="currentPrice"    column="current_price"      />
+        <result property="changeRate"      column="change_rate"        />
+        <result property="priceChange"     column="price_change"       />
+        <result property="turnoverRate"    column="turnover_rate"      />
+        <result property="volumeRatio"     column="volume_ratio"       />
+        <result property="amplitude"       column="amplitude"          />
+        <result property="turnoverAmount"  column="turnover_amount"    />
+        <result property="circulatingShares" column="circulating_shares" />
         <result property="createBy"    column="create_by"    />
         <result property="createTime"    column="create_time"    />
         <result property="updateBy"    column="update_by"    />
@@ -18,11 +29,21 @@
     </resultMap>
 
     <sql id="selectStockVo">
-        select id, stock_code, stock_name, market, industry_name, create_by, create_time, update_by, update_time, remark from stock
+        select id, stock_code, stock_name, market, industry_name,
+               pe_ratio, total_market_cap, circ_market_cap,
+               current_price, change_rate, price_change,
+               turnover_rate, volume_ratio, amplitude,
+               turnover_amount, circulating_shares,
+               create_by, create_time, update_by, update_time, remark
+        from stock
     </sql>
 
     <select id="selectStockList" parameterType="Stock" resultMap="StockResult">
         select s.id, s.stock_code, s.stock_name, s.market, s.industry_name,
+        s.pe_ratio, s.total_market_cap, s.circ_market_cap,
+        s.current_price, s.change_rate, s.price_change,
+        s.turnover_rate, s.volume_ratio, s.amplitude,
+        s.turnover_amount, s.circulating_shares,
         s.create_by, s.create_time, s.update_by, s.update_time, s.remark
         from stock s
         <where>
@@ -68,6 +89,17 @@
             <if test="stockCode != null and stockCode != ''">stock_code,</if>
             <if test="stockName != null and stockName != ''">stock_name,</if>
             <if test="market != null">market,</if>
+            <if test="peRatio != null">pe_ratio,</if>
+            <if test="totalMarketCap != null">total_market_cap,</if>
+            <if test="circMarketCap != null">circ_market_cap,</if>
+            <if test="currentPrice != null">current_price,</if>
+            <if test="changeRate != null">change_rate,</if>
+            <if test="priceChange != null">price_change,</if>
+            <if test="turnoverRate != null">turnover_rate,</if>
+            <if test="volumeRatio != null">volume_ratio,</if>
+            <if test="amplitude != null">amplitude,</if>
+            <if test="turnoverAmount != null">turnover_amount,</if>
+            <if test="circulatingShares != null">circulating_shares,</if>
             <if test="createBy != null">create_by,</if>
             <if test="createTime != null">create_time,</if>
             <if test="updateBy != null">update_by,</if>
@@ -78,6 +110,17 @@
             <if test="stockCode != null and stockCode != ''">#{stockCode},</if>
             <if test="stockName != null and stockName != ''">#{stockName},</if>
             <if test="market != null">#{market},</if>
+            <if test="peRatio != null">#{peRatio},</if>
+            <if test="totalMarketCap != null">#{totalMarketCap},</if>
+            <if test="circMarketCap != null">#{circMarketCap},</if>
+            <if test="currentPrice != null">#{currentPrice},</if>
+            <if test="changeRate != null">#{changeRate},</if>
+            <if test="priceChange != null">#{priceChange},</if>
+            <if test="turnoverRate != null">#{turnoverRate},</if>
+            <if test="volumeRatio != null">#{volumeRatio},</if>
+            <if test="amplitude != null">#{amplitude},</if>
+            <if test="turnoverAmount != null">#{turnoverAmount},</if>
+            <if test="circulatingShares != null">#{circulatingShares},</if>
             <if test="createBy != null">#{createBy},</if>
             <if test="createTime != null">#{createTime},</if>
             <if test="updateBy != null">#{updateBy},</if>
@@ -87,14 +130,36 @@
     </insert>
     <insert id="batchInsertListIgnoreSame" parameterType="java.util.List">
         insert into stock (
-        stock_code, stock_name, market, create_by, create_time, update_by, update_time, remark
+        stock_code, stock_name, market, industry_name,
+        pe_ratio, total_market_cap, circ_market_cap,
+        current_price, change_rate, price_change,
+        turnover_rate, volume_ratio, amplitude,
+        turnover_amount, circulating_shares,
+        create_by, create_time, update_by, update_time, remark
         ) values
         <foreach collection="list" item="item" separator=",">
-            (#{item.stockCode}, #{item.stockName}, #{item.market}, 'system',sysdate(),'system', sysdate(), #{item.remark})
+            (#{item.stockCode}, #{item.stockName}, #{item.market}, #{item.industryName},
+             #{item.peRatio}, #{item.totalMarketCap}, #{item.circMarketCap},
+             #{item.currentPrice}, #{item.changeRate}, #{item.priceChange},
+             #{item.turnoverRate}, #{item.volumeRatio}, #{item.amplitude},
+             #{item.turnoverAmount}, #{item.circulatingShares},
+             'system',sysdate(),'system', sysdate(), #{item.remark})
         </foreach>
         on duplicate key update
         stock_name = values(stock_name),
         market = values(market),
+        industry_name = values(industry_name),
+        pe_ratio = values(pe_ratio),
+        total_market_cap = values(total_market_cap),
+        circ_market_cap = values(circ_market_cap),
+        current_price = values(current_price),
+        change_rate = values(change_rate),
+        price_change = values(price_change),
+        turnover_rate = values(turnover_rate),
+        volume_ratio = values(volume_ratio),
+        amplitude = values(amplitude),
+        turnover_amount = values(turnover_amount),
+        circulating_shares = values(circulating_shares),
         update_by = 'system',
         update_time = sysdate()
     </insert>
@@ -105,6 +170,17 @@
             <if test="stockCode != null and stockCode != ''">stock_code = #{stockCode},</if>
             <if test="stockName != null and stockName != ''">stock_name = #{stockName},</if>
             <if test="market != null">market = #{market},</if>
+            <if test="peRatio != null">pe_ratio = #{peRatio},</if>
+            <if test="totalMarketCap != null">total_market_cap = #{totalMarketCap},</if>
+            <if test="circMarketCap != null">circ_market_cap = #{circMarketCap},</if>
+            <if test="currentPrice != null">current_price = #{currentPrice},</if>
+            <if test="changeRate != null">change_rate = #{changeRate},</if>
+            <if test="priceChange != null">price_change = #{priceChange},</if>
+            <if test="turnoverRate != null">turnover_rate = #{turnoverRate},</if>
+            <if test="volumeRatio != null">volume_ratio = #{volumeRatio},</if>
+            <if test="amplitude != null">amplitude = #{amplitude},</if>
+            <if test="turnoverAmount != null">turnover_amount = #{turnoverAmount},</if>
+            <if test="circulatingShares != null">circulating_shares = #{circulatingShares},</if>
             <if test="createBy != null">create_by = #{createBy},</if>
             <if test="createTime != null">create_time = #{createTime},</if>
             <if test="updateBy != null">update_by = #{updateBy},</if>
@@ -126,7 +202,11 @@
     </delete>
 
     <select id="selectStocksByGroupId" parameterType="Long" resultMap="StockResult">
-        select s.id, s.stock_code, s.stock_name, s.market,
+        select s.id, s.stock_code, s.stock_name, s.market, s.industry_name,
+               s.pe_ratio, s.total_market_cap, s.circ_market_cap,
+               s.current_price, s.change_rate, s.price_change,
+               s.turnover_rate, s.volume_ratio, s.amplitude,
+               s.turnover_amount, s.circulating_shares,
                s.create_by, s.create_time, s.update_by, s.update_time, s.remark
         from stock s
                  inner join stock_group_stock sgs on s.id = sgs.stock_id
@@ -160,7 +240,11 @@
     </select>
 
     <select id="selectStocksNotInGroup" resultMap="StockResult">
-        select s.id, s.stock_code, s.stock_name, s.market,
+        select s.id, s.stock_code, s.stock_name, s.market, s.industry_name,
+        s.pe_ratio, s.total_market_cap, s.circ_market_cap,
+        s.current_price, s.change_rate, s.price_change,
+        s.turnover_rate, s.volume_ratio, s.amplitude,
+        s.turnover_amount, s.circulating_shares,
         s.create_by, s.create_time, s.update_by, s.update_time, s.remark
         from stock s
         where s.id not in (

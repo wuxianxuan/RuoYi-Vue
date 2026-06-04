@@ -50,12 +50,12 @@ public class StockKlineServiceImpl implements IStockKlineService
     }
 
     /**
-     * 检查已有数据的时间范围是否覆盖入参要求的范围
+     * 检查已有数据是否完整覆盖入参要求的日期范围（逐日校验，避免中间缺失）
      *
      * @param existing  数据库已有数据
-     * @param startDate 请求开始日期
-     * @param endDate   请求结束日期
-     * @return true=已覆盖，false=未覆盖需要从外部数据源拉取
+     * @param startDate 请求开始日期 (yyyy-MM-dd)
+     * @param endDate   请求结束日期 (yyyy-MM-dd)
+     * @return true=已完整覆盖，false=存在缺失需要从外部数据源拉取
      */
     private boolean isDateRangeCovered(List<StockKline> existing, String startDate, String endDate)
     {
@@ -63,30 +63,29 @@ public class StockKlineServiceImpl implements IStockKlineService
         {
             return false;
         }
-        // 按tradeTime升序排列后取首尾
-        java.util.Date minDate = existing.stream()
-                .map(StockKline::getTradeTime)
-                .filter(d -> d != null)
-                .min(java.util.Date::compareTo)
-                .orElse(null);
-        java.util.Date maxDate = existing.stream()
-                .map(StockKline::getTradeTime)
-                .filter(d -> d != null)
-                .max(java.util.Date::compareTo)
-                .orElse(null);
-        if (minDate == null || maxDate == null)
-        {
-            return false;
-        }
         try
         {
-            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd");
-            java.util.Date reqStart = sdf.parse(startDate);
-            java.util.Date reqEnd = sdf.parse(endDate);
-            // 已有数据的范围必须完全覆盖请求的范围
-            return !minDate.after(reqStart) && !maxDate.before(reqEnd);
+            java.time.LocalDate start = java.time.LocalDate.parse(startDate);
+            java.time.LocalDate end = java.time.LocalDate.parse(endDate);
+
+            // 收集已有数据的所有日期
+            java.util.Set<java.time.LocalDate> existingDates = existing.stream()
+                    .map(StockKline::getTradeTime)
+                    .filter(d -> d != null)
+                    .map(d -> d.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDate())
+                    .collect(java.util.stream.Collectors.toSet());
+
+            // 逐日检查是否完整覆盖
+            for (java.time.LocalDate d = start; !d.isAfter(end); d = d.plusDays(1))
+            {
+                if (!existingDates.contains(d))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
-        catch (java.text.ParseException e)
+        catch (Exception e)
         {
             log.warn("日期解析失败: startDate={}, endDate={}", startDate, endDate);
             return false;

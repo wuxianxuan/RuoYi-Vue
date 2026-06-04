@@ -2,9 +2,9 @@
 <!DOCTYPE mapper
 PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.ruoyi.system.mapper.StockAnalysisRecordMapper">
+<mapper namespace="com.ruoyi.system.mapper.StockLimitUpRecordMapper">
 
-    <resultMap type="StockAnalysisRecord" id="StockAnalysisRecordResult">
+    <resultMap type="StockLimitUpRecord" id="StockLimitUpRecordResult">
         <id property="id" column="id"/>
         <result property="tradeDate" column="trade_date"/>
         <result property="secuCode" column="secu_code"/>
@@ -28,8 +28,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="remark" column="remark"/>
     </resultMap>
 
-    <insert id="batchInsertStockAnalysisRecords" parameterType="java.util.List">
-        insert into stock_analysis_record (
+    <insert id="batchInsertStockLimitUpRecords" parameterType="java.util.List">
+        insert into stock_limit_up_record (
             trade_date, secu_code, secu_name, change_rate, last_px, cmc, time, up_num, up_reason,
             plate_secu_code, plate_secu_name, plate_change_rate, plate_up_reason, plate_stock_up_num, up_tags,
             create_by, create_time, remark
@@ -56,7 +56,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             update_by = 'system',
             update_time = sysdate()
     </insert>
-    <select id="collectStockData" resultType="com.ruoyi.system.domain.stock.StockAnalysisRecord">
+    <select id="collectStockData" resultType="com.ruoyi.system.domain.stock.StockLimitUpRecord">
         SELECT
             id,
             secu_code AS secuCode,
@@ -64,7 +64,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         FROM (
                  SELECT id, secu_code, secu_name, update_time,
                         ROW_NUMBER() OVER (PARTITION BY secu_code ORDER BY update_time DESC) AS rn
-                 FROM stock_analysis_record
+                 FROM stock_limit_up_record
                  <where>
                      <if test="dateStr != null and dateStr != ''">
                          trade_date > #{dateStr}

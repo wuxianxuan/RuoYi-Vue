@@ -3,12 +3,12 @@ package com.ruoyi.quartz.task;
 import com.ruoyi.common.enums.StockMarketType;
 import com.ruoyi.common.utils.stock.TradingDayUtils;
 import com.ruoyi.system.domain.stock.Stock;
-import com.ruoyi.system.domain.stock.StockAnalysisRecord;
-import com.ruoyi.system.domain.stock.StockAnalysisRequest;
-import com.ruoyi.system.mapper.StockAnalysisRecordMapper;
+import com.ruoyi.system.domain.stock.StockLimitUpRecord;
+import com.ruoyi.system.domain.stock.StockLimitUpRequest;
+import com.ruoyi.system.mapper.StockLimitUpRecordMapper;
 import com.ruoyi.system.mapper.StockMapper;
-import com.ruoyi.system.service.IStockAnalysisRecordService;
-import com.ruoyi.system.service.impl.StockAnalysisRecordServiceImpl;
+import com.ruoyi.system.service.IStockLimitUpRecordService;
+import com.ruoyi.system.service.impl.StockLimitUpRecordServiceImpl;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,34 +20,34 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Component("stockDataCollectTask")
-public class StockDataCollectTask {
+public class StockLimitUpCollectTask {
 
-    private static final Logger log = LoggerFactory.getLogger(StockDataCollectTask.class);
+    private static final Logger log = LoggerFactory.getLogger(StockLimitUpCollectTask.class);
 
     @Resource
-    private IStockAnalysisRecordService stockAnalysisRecordService;
+    private IStockLimitUpRecordService stockAnalysisRecordService;
     @Resource
-    private StockAnalysisRecordMapper stockAnalysisRecordMapper;
+    private StockLimitUpRecordMapper stockLimitUpRecordMapper;
     @Resource
     private StockMapper stockMapper;
 
     public void downloadAnalysisData(){
         LocalDate now = LocalDate.now();
-        StockAnalysisRequest request = new StockAnalysisRequest();
-        request.setStartDate(TradingDayUtils.getDateStr(now));
-        request.setEndDate(TradingDayUtils.getDateStr(now.minusDays(30)));
+        StockLimitUpRequest request = new StockLimitUpRequest();
+        request.setStartDate(TradingDayUtils.getDateStr(now.minusDays(2000)));
+        request.setEndDate(TradingDayUtils.getDateStr(now));
         stockAnalysisRecordService.downloadAnalysisData(request);
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void collectStockData(){
-        LocalDate date = LocalDate.now().minusDays(31);
-        List<StockAnalysisRecord> records = stockAnalysisRecordMapper.collectStockData(TradingDayUtils.getDateStr(date));
+        LocalDate date = LocalDate.now().minusDays(2000);
+        List<StockLimitUpRecord> records = stockLimitUpRecordMapper.collectStockData(TradingDayUtils.getDateStr(date));
         if (records == null || records.isEmpty()){
             return;
         }
         List<Stock> insertList = new ArrayList<>();
-        for (StockAnalysisRecord item : records) {
+        for (StockLimitUpRecord item : records) {
             Stock stock = parseStock(item);
             if (stock == null) {
                 continue;
@@ -60,12 +60,12 @@ public class StockDataCollectTask {
     }
 
     /**
-     * 从 StockAnalysisRecord 解析 Stock 对象
+     * 从 StockLimitUpRecord 解析 Stock 对象
      *
      * @param record 分析记录
      * @return 解析后的 Stock，解析失败返回 null
      */
-    private Stock parseStock(StockAnalysisRecord record) {
+    private Stock parseStock(StockLimitUpRecord record) {
         String secuCode = record.getSecuCode();
         if (secuCode == null || secuCode.isEmpty()) {
             log.warn("股票编码为空，跳过记录: 股票名称={}", record.getSecuName());

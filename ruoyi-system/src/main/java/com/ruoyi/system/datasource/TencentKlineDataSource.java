@@ -6,6 +6,7 @@ import com.ruoyi.system.domain.stock.StockKline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.ResponseEntity;
@@ -29,7 +30,8 @@ public class TencentKlineDataSource implements KlineDataSource
 {
     private static final Logger log = LoggerFactory.getLogger(TencentKlineDataSource.class);
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    @Autowired
+    private RestTemplate restTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${stock.kline.tencent.base-url:https://proxy.finance.qq.com}")

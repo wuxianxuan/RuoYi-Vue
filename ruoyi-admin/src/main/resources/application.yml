@@ -67,7 +67,7 @@ spring:
   devtools:
     restart:
       # 热部署开关
-      enabled: true
+      enabled: false
   data:
     # redis 配置
     redis:
@@ -145,3 +145,26 @@ xss:
   excludes: /system/notice
   # 匹配链接
   urlPatterns: /system/*,/monitor/*,/tool/*
+
+# 股票数据源配置
+stock:
+  # 同花顺个股行情（需登录态，Cookie 和 hexin-v 从浏览器登录后复制）
+  # 获取方式：浏览器登录 https://q.10jqka.com.cn → F12 → Network → 任意ajax请求 → 复制 Cookie 和 hexin-v
+  ths:
+    quote:
+      base-url: https://q.10jqka.com.cn
+      # Cookie: 必须包含 sess_tk, user, userid（注意：Token会过期，需定期更换）
+      cookie: BAIDU_SSP_lcr=https://cn.bing.com/; Hm_lvt_78c58f01938e4d85eaf619eae71b4ed1=1780579278; __utma=156575163.2094045230.1780579279.1780579279.1780579279.1; __utmc=156575163; __utmz=156575163.1780579279.1.1.utmcsr=cn.bing.com|utmccn=(referral)|utmcmd=referral|utmcct=/; Hm_lvt_9d25c03aef06fec6abea265b79509ba4=1780579296; HMACCOUNT=ABC36A7BE213D43A; Hm_lvt_6dc19a3987135225beb977a0b9931a25=1780579296; u_ukey=A10702B8689642C6BE607730E11E6E4A; u_uver=1.0.0; u_dpass=7sHJ%2FMFwjdBL8VjbE%2BWz74VTZNPn6PGntQHG5UzdOslq83pPZJvQHl521CqIh3B0Hi80LrSsTFH9a%2B6rtRvqGg%3D%3D; u_did=AC13D3B18C454DC8874F9D3021B9F027; u_ttype=WEB; ttype=WEB; user=MDpteF8wdzliOXRzNGs6Ok5vbmU6NTAwOjg1NjcyMDAyMTo3LDExMTExMTExMTExLDQwOzQ0LDExLDQwOzYsMSw0MDs1LDEsNDA7MSwxMDEsNDA7MiwxLDQwOzMsMSw0MDs1LDEsNDA7OCwwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMSw0MDsxMDIsMSw0MDoxNjo6Ojg0NjcyMDAyMToxNzgwNTgwNDcwOjo6MTc3MTc0NzMyMDo2MDQ4MDA6MDoxNmRkODJkYTBiNjllYjJkMTMyNzQ2Njc5NTYwNzg3NDM6ZGVmYXVsdF81OjA%3D; userid=846720021; u_name=mx_0w9b9ts4k; escapename=mx_0w9b9ts4k; ticket=43bd9db3351729e4fb837a6aed1ec5fa; user_status=0; utk=b4601ee1149d2a522e12cd885d1b7a9a; sess_tk=eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiIsImtpZCI6InNlc3NfdGtfMSIsImJ0eSI6InNlc3NfdGsifQ.eyJqdGkiOiI0Mzg3MDc1Njc5NjY3NDMyZDFiMjllYjZhMDJkZDg2ZDEiLCJpYXQiOjE3ODA1ODA0NzAsImV4cCI6MTc4MTE4NTI3MCwic3ViIjoiODQ2NzIwMDIxIiwiaXNzIjoidXBhc3MuMTBqcWthLmNvbS5jbiIsImF1ZCI6IjIwMjAxMTE4NTI4ODkwNzIiLCJhY3QiOiJvZmMiLCJjdWhzIjoiZTljNWRmYWNkNzBjN2FlYWRmZDA5ZTI3ODBlM2NmZDY4OTNlMzM5Y2ZlNzM2ODFlYjg3NzlkNzY1NDkxMmJhMyJ9.hUmtLhUkGC0wqfI2xn_YyefEqIw9I_xO_SSeevLRPtPXbO7bCriODhXhe0kQRrCV01vr19QhgFDq58b4rY2swg; cuc=apq3ivrolypl; Hm_lvt_69929b9dce4c22a060bd22d703b2a280=1780580516; HMACCOUNT=ABC36A7BE213D43A; _ga=GA1.1.2114631645.1780580518; Hm_lpvt_69929b9dce4c22a060bd22d703b2a280=1780580520; _ga_H2RK0R0681=GS2.1.s1780580518$o1$g1$t1780580584$j60$l0$h0; Hm_lpvt_78c58f01938e4d85eaf619eae71b4ed1=1780580904; Hm_lpvt_9d25c03aef06fec6abea265b79509ba4=1780580907; Hm_lpvt_6dc19a3987135225beb977a0b9931a25=1780580907; v=A760kBPRWEg6RYxsGyznxhTlD98F_4ZhFMQ2_mjHKbL-SVBB0I_SieRThnQ7
+      # hexin-v: 请求头中的动态令牌
+      hexin-v: A760kBPRWEg6RYxsGyznxhTlD98F_4ZhFMQ2_mjHKbL-SVBB0I_SieRThnQ7
+  # 同花顺板块排名
+  blockrank:
+    origin: https://m.10jqka.com.cn
+    referer: https://m.10jqka.com.cn/
+    autoCreateStock: true
+    fullReplace: true
+  # K线数据源
+  kline:
+    tencent:
+      enabled: true
+      base-url: https://proxy.finance.qq.com

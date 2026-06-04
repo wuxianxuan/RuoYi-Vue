@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.StockIndicatorMapper">
+
+    <resultMap type="com.ruoyi.system.domain.stock.StockIndicator" id="StockIndicatorResult">
+        <result property="id"         column="id"/>
+        <result property="stockCode"  column="stock_code"/>
+        <result property="klineType"  column="kline_type"/>
+        <result property="tradeTime"  column="trade_time"/>
+        <result property="ma5"        column="ma5"/>
+        <result property="ma10"       column="ma10"/>
+        <result property="ma20"       column="ma20"/>
+        <result property="ma60"       column="ma60"/>
+        <result property="macdDif"    column="macd_dif"/>
+        <result property="macdDea"    column="macd_dea"/>
+        <result property="macdBar"    column="macd_bar"/>
+        <result property="rsi6"       column="rsi6"/>
+        <result property="rsi14"      column="rsi14"/>
+        <result property="volRatio"   column="vol_ratio"/>
+        <result property="trendSlope" column="trend_slope"/>
+    </resultMap>
+
+    <sql id="selectIndicatorVo">
+        select id, stock_code, kline_type, trade_time,
+               ma5, ma10, ma20, ma60,
+               macd_dif, macd_dea, macd_bar,
+               rsi6, rsi14, vol_ratio, trend_slope
+        from stock_indicator
+    </sql>
+
+    <insert id="batchInsertOrUpdate">
+        insert into stock_indicator (
+            stock_code, kline_type, trade_time,
+            ma5, ma10, ma20, ma60,
+            macd_dif, macd_dea, macd_bar,
+            rsi6, rsi14, vol_ratio, trend_slope
+        ) values
+        <foreach collection="list" item="item" separator=",">
+            (#{item.stockCode}, #{item.klineType}, #{item.tradeTime},
+             #{item.ma5}, #{item.ma10}, #{item.ma20}, #{item.ma60},
+             #{item.macdDif}, #{item.macdDea}, #{item.macdBar},
+             #{item.rsi6}, #{item.rsi14}, #{item.volRatio}, #{item.trendSlope})
+        </foreach>
+        on duplicate key update
+            ma5 = values(ma5),
+            ma10 = values(ma10),
+            ma20 = values(ma20),
+            ma60 = values(ma60),
+            macd_dif = values(macd_dif),
+            macd_dea = values(macd_dea),
+            macd_bar = values(macd_bar),
+            rsi6 = values(rsi6),
+            rsi14 = values(rsi14),
+            vol_ratio = values(vol_ratio),
+            trend_slope = values(trend_slope)
+    </insert>
+
+    <select id="selectByCodeTypeDateRange" resultMap="StockIndicatorResult">
+        <include refid="selectIndicatorVo"/>
+        where stock_code = #{stockCode}
+          and kline_type = #{klineType}
+        <if test="startDate != null and startDate != ''">
+          and trade_time &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+          and trade_time &lt;= #{endDate}
+        </if>
+        order by trade_time asc
+    </select>
+
+    <select id="selectLatestByStockCode" resultMap="StockIndicatorResult">
+        <include refid="selectIndicatorVo"/>
+        where stock_code = #{stockCode}
+          and kline_type = #{klineType}
+        order by trade_time desc
+        limit 1
+    </select>
+
+</mapper>

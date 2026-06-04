@@ -1,5 +1,6 @@
 package com.ruoyi.system.domain.stock;
 
+import java.math.BigDecimal;
 import java.util.List;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
@@ -34,6 +35,39 @@ public class Stock extends BaseEntity
     /** 行业全路径（冗余字段） */
     @Excel(name = "行业")
     private String industryName;
+
+    /** 市盈率（PE） */
+    private BigDecimal peRatio;
+
+    /** 总市值 */
+    private BigDecimal totalMarketCap;
+
+    /** 流通市值 */
+    private BigDecimal circMarketCap;
+
+    /** 现价 */
+    private BigDecimal currentPrice;
+
+    /** 涨跌幅(%) */
+    private BigDecimal changeRate;
+
+    /** 涨跌额 */
+    private BigDecimal priceChange;
+
+    /** 换手率(%) */
+    private BigDecimal turnoverRate;
+
+    /** 量比 */
+    private BigDecimal volumeRatio;
+
+    /** 振幅(%) */
+    private BigDecimal amplitude;
+
+    /** 成交额 */
+    private BigDecimal turnoverAmount;
+
+    /** 流通股 */
+    private BigDecimal circulatingShares;
 
     /** 概念名称列表（非持久化，列表展示用） */
     private List<String> conceptNames;
@@ -97,6 +131,60 @@ public class Stock extends BaseEntity
         return industryName;
     }
 
+    public void setPeRatio(BigDecimal peRatio)
+    {
+        this.peRatio = peRatio;
+    }
+
+    public BigDecimal getPeRatio()
+    {
+        return peRatio;
+    }
+
+    public void setTotalMarketCap(BigDecimal totalMarketCap)
+    {
+        this.totalMarketCap = totalMarketCap;
+    }
+
+    public BigDecimal getTotalMarketCap()
+    {
+        return totalMarketCap;
+    }
+
+    public void setCircMarketCap(BigDecimal circMarketCap)
+    {
+        this.circMarketCap = circMarketCap;
+    }
+
+    public BigDecimal getCircMarketCap()
+    {
+        return circMarketCap;
+    }
+
+    public void setCurrentPrice(BigDecimal currentPrice) { this.currentPrice = currentPrice; }
+    public BigDecimal getCurrentPrice() { return currentPrice; }
+
+    public void setChangeRate(BigDecimal changeRate) { this.changeRate = changeRate; }
+    public BigDecimal getChangeRate() { return changeRate; }
+
+    public void setPriceChange(BigDecimal priceChange) { this.priceChange = priceChange; }
+    public BigDecimal getPriceChange() { return priceChange; }
+
+    public void setTurnoverRate(BigDecimal turnoverRate) { this.turnoverRate = turnoverRate; }
+    public BigDecimal getTurnoverRate() { return turnoverRate; }
+
+    public void setVolumeRatio(BigDecimal volumeRatio) { this.volumeRatio = volumeRatio; }
+    public BigDecimal getVolumeRatio() { return volumeRatio; }
+
+    public void setAmplitude(BigDecimal amplitude) { this.amplitude = amplitude; }
+    public BigDecimal getAmplitude() { return amplitude; }
+
+    public void setTurnoverAmount(BigDecimal turnoverAmount) { this.turnoverAmount = turnoverAmount; }
+    public BigDecimal getTurnoverAmount() { return turnoverAmount; }
+
+    public void setCirculatingShares(BigDecimal circulatingShares) { this.circulatingShares = circulatingShares; }
+    public BigDecimal getCirculatingShares() { return circulatingShares; }
+
     public List<String> getConceptNames()
     {
         return conceptNames;
@@ -145,6 +233,12 @@ public class Stock extends BaseEntity
                 .append("stockName", getStockName())
                 .append("market", getMarket())
                 .append("industryName", getIndustryName())
+                .append("peRatio", getPeRatio())
+                .append("totalMarketCap", getTotalMarketCap())
+                .append("circMarketCap", getCircMarketCap())
+                .append("currentPrice", getCurrentPrice())
+                .append("changeRate", getChangeRate())
+                .append("turnoverRate", getTurnoverRate())
                 .append("createBy", getCreateBy())
                 .append("createTime", getCreateTime())
                 .append("updateBy", getUpdateBy())

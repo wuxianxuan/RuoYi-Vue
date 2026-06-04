@@ -2,8 +2,8 @@ package com.ruoyi.system.service.impl;
 
 import com.ruoyi.common.utils.stock.TradingDayUtils;
 import com.ruoyi.system.domain.stock.*;
-import com.ruoyi.system.mapper.StockAnalysisRecordMapper;
-import com.ruoyi.system.service.IStockAnalysisRecordService;
+import com.ruoyi.system.mapper.StockLimitUpRecordMapper;
+import com.ruoyi.system.service.IStockLimitUpRecordService;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,9 +20,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Service
-public class StockAnalysisRecordServiceImpl implements IStockAnalysisRecordService {
+public class StockLimitUpRecordServiceImpl implements IStockLimitUpRecordService {
 
-    private static final Logger log = LoggerFactory.getLogger(StockAnalysisRecordServiceImpl.class);
+    private static final Logger log = LoggerFactory.getLogger(StockLimitUpRecordServiceImpl.class);
 
     private static final String CLS_API_BASE = "https://x-quote.cls.cn/v2/quote/a/plate/up_down_analysis";
 
@@ -33,15 +33,15 @@ public class StockAnalysisRecordServiceImpl implements IStockAnalysisRecordServi
     private RestTemplate restTemplate;
 
     @Resource
-    private StockAnalysisRecordMapper stockAnalysisRecordMapper;
+    private StockLimitUpRecordMapper stockAnalysisRecordMapper;
 
     @Override
-    public int batchSaveStockAnalysisRecords(List<StockAnalysisRecord> records) {
-        return stockAnalysisRecordMapper.batchInsertStockAnalysisRecords(records);
+    public int batchSaveStockLimitUpRecords(List<StockLimitUpRecord> records) {
+        return stockAnalysisRecordMapper.batchInsertStockLimitUpRecords(records);
     }
 
     @Override
-    public String downloadAnalysisData(StockAnalysisRequest request) {
+    public String downloadAnalysisData(StockLimitUpRequest request) {
         String startDate = request.getStartDate();
         String endDate = request.getEndDate();
 
@@ -79,7 +79,7 @@ public class StockAnalysisRecordServiceImpl implements IStockAnalysisRecordServi
      * @return 保存的记录数
      */
     private int processDate(String date) {
-        String url = String.format("%s?up_limit=0&date=%s&sign=%s", CLS_API_BASE, date, clsSign);
+        String url = String.format("%s?up_limit=1&date=%s&sign=%s", CLS_API_BASE, date, clsSign);
 
         StockResult response;
         try {
@@ -113,7 +113,7 @@ public class StockAnalysisRecordServiceImpl implements IStockAnalysisRecordServi
             return 0;
         }
 
-        List<StockAnalysisRecord> records = new ArrayList<>();
+        List<StockLimitUpRecord> records = new ArrayList<>();
         for (PlateStock plateStock : plateStocks) {
             List<PlateStockInfo> stockList = plateStock.getStock_list();
             if (stockList == null) {
@@ -129,7 +129,7 @@ public class StockAnalysisRecordServiceImpl implements IStockAnalysisRecordServi
                     continue;
                 }
 
-                StockAnalysisRecord record = new StockAnalysisRecord();
+                StockLimitUpRecord record = new StockLimitUpRecord();
                 record.setTradeDate(date);
                 record.setSecuCode(stockInfo.getSecu_code());
                 record.setSecuName(stockInfo.getSecu_name());
@@ -156,7 +156,7 @@ public class StockAnalysisRecordServiceImpl implements IStockAnalysisRecordServi
         }
 
         if (!records.isEmpty()) {
-            batchSaveStockAnalysisRecords(records);
+            batchSaveStockLimitUpRecords(records);
         }
         return records.size();
     }

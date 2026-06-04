@@ -9,7 +9,7 @@ import java.math.BigDecimal;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-public class StockAnalysisRecord extends BaseEntity {
+public class StockLimitUpRecord extends BaseEntity {
     private Long id;
 
     @Excel(name = "交易日期")

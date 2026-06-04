@@ -323,10 +323,19 @@ public class StockPlateInfoSyncTask
         List<Stock> updateStocks = new ArrayList<>();
         Map<String, Long> codeIdMap = new LinkedHashMap<>();
 
+        // 构建 code → BlockRankItem 映射（用于获取PE/市值）
+        Map<String, BlockRankResponse.BlockRankItem> codeItemMap = items.stream()
+                .filter(i -> i.getStockCode() != null)
+                .collect(Collectors.toMap(
+                        BlockRankResponse.BlockRankItem::getStockCode,
+                        i -> i,
+                        (a, b) -> a));
+
         for (String code : stockCodes)
         {
             String name = codeNameMap.get(code);
             String market = inferMarket(code);
+            BlockRankResponse.BlockRankItem item = codeItemMap.get(code);
 
             if (existingMap.containsKey(code))
             {
@@ -335,13 +344,18 @@ public class StockPlateInfoSyncTask
                 if (name != null && !name.equals(s.getStockName()))
                 {
                     s.setStockName(name);
-                    updateStocks.add(s);
+                    if (!updateStocks.contains(s)) updateStocks.add(s);
                 }
                 // 补充市场
                 if (s.getMarket() == null && market != null)
                 {
                     s.setMarket(market);
-                    updateStocks.add(s);
+                    if (!updateStocks.contains(s)) updateStocks.add(s);
+                }
+                // 更新PE/市值（同花顺提供的财务数据）
+                if (item != null && enrichStockFromItem(s, item))
+                {
+                    if (!updateStocks.contains(s)) updateStocks.add(s);
                 }
                 codeIdMap.put(code, s.getId());
             }
@@ -353,6 +367,13 @@ public class StockPlateInfoSyncTask
                     s.setStockCode(code);
                     s.setStockName(name);
                     s.setMarket(market);
+                    // 填充PE/市值
+                    if (item != null)
+                    {
+                        s.setPeRatio(item.getPeRatio());
+                        s.setTotalMarketCap(item.getTotalMarketCap());
+                        s.setCircMarketCap(item.getCircMarketCap());
+                    }
                     s.setCreateBy("system");
                     newStocks.add(s);
                 }
@@ -416,6 +437,34 @@ public class StockPlateInfoSyncTask
                 existingStocks.size(), newStocks.size(), updateStocks.size(), result.size());
 
         return result;
+    }
+
+    /**
+     * 用 BlockRankItem 中的PE/市值数据更新 Stock 对象
+     *
+     * @return true 表示有数据被更新
+     */
+    private boolean enrichStockFromItem(Stock stock, BlockRankResponse.BlockRankItem item)
+    {
+        boolean changed = false;
+
+        if (item.getPeRatio() != null)
+        {
+            stock.setPeRatio(item.getPeRatio());
+            changed = true;
+        }
+        if (item.getTotalMarketCap() != null)
+        {
+            stock.setTotalMarketCap(item.getTotalMarketCap());
+            changed = true;
+        }
+        if (item.getCircMarketCap() != null)
+        {
+            stock.setCircMarketCap(item.getCircMarketCap());
+            changed = true;
+        }
+
+        return changed;
     }
 
     /**
