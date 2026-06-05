@@ -59,13 +59,3 @@ spring:
                 wall:
                     config:
                         multi-statement-allow: true
-
-# CLS财联社配置
-cls:
-    sign: 6dfce97fbf19527e4957cca0127feafd
-
-stock:
-    kline:
-        tencent:
-            base-url: https://proxy.finance.qq.com
-            enabled: true

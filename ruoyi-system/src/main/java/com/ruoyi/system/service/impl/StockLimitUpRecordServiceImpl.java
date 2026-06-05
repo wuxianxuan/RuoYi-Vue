@@ -26,7 +26,7 @@ public class StockLimitUpRecordServiceImpl implements IStockLimitUpRecordService
 
     private static final String CLS_API_BASE = "https://x-quote.cls.cn/v2/quote/a/plate/up_down_analysis";
 
-    @Value("${cls.sign}")
+    @Value("${stock.cls.sign}")
     private String clsSign;
 
     @Resource
