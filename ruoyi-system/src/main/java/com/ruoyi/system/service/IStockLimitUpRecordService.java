@@ -15,5 +15,5 @@ public interface IStockLimitUpRecordService {
      * @param request 包含起止日期的请求
      * @return 处理结果摘要
      */
-    String downloadAnalysisData(StockLimitUpRequest request);
+    String syncLimitUpData(StockLimitUpRequest request);
 }

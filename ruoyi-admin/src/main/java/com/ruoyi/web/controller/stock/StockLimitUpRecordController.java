@@ -17,13 +17,13 @@ public class StockLimitUpRecordController {
     @Resource
     private IStockLimitUpRecordService stockAnalysisRecordService;
 
-    @GetMapping("/downloadAnalysisData")
-    public AjaxResult downloadAnalysisData(StockLimitUpRequest request) {
+    @GetMapping("/syncLimitUpData")
+    public AjaxResult syncLimitUpData(StockLimitUpRequest request) {
         if (request == null || request.getStartDate() == null || request.getEndDate() == null) {
             return AjaxResult.error("请提供开始日期和结束日期");
         }
 
-        String result = stockAnalysisRecordService.downloadAnalysisData(request);
+        String result = stockAnalysisRecordService.syncLimitUpData(request);
         return AjaxResult.success(result);
     }
 }

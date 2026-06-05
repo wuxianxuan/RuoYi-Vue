@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.StockDailyQuoteMapper">
+
+    <resultMap type="StockDailyQuote" id="StockDailyQuoteResult">
+        <result property="id"               column="id"              />
+        <result property="stockCode"        column="stock_code"      />
+        <result property="tradeDate"        column="trade_date"      />
+        <result property="currentPrice"     column="current_price"   />
+        <result property="changeRate"       column="change_rate"     />
+        <result property="priceChange"      column="price_change"    />
+        <result property="speed"            column="speed"           />
+        <result property="turnoverRate"     column="turnover_rate"   />
+        <result property="volumeRatio"      column="volume_ratio"    />
+        <result property="amplitude"        column="amplitude"       />
+        <result property="turnoverAmount"   column="turnover_amount" />
+        <result property="circulatingShares" column="circulating_shares" />
+        <result property="circMarketCap"    column="circ_market_cap" />
+        <result property="peRatio"          column="pe_ratio"        />
+        <result property="totalMarketCap"   column="total_market_cap"/>
+    </resultMap>
+
+    <insert id="batchInsertIgnore" parameterType="java.util.List">
+        insert ignore into stock_daily_quote (
+            stock_code, trade_date,
+            current_price, change_rate, price_change, speed,
+            turnover_rate, volume_ratio, amplitude,
+            turnover_amount, circulating_shares,
+            circ_market_cap, pe_ratio, total_market_cap
+        ) values
+        <foreach collection="list" item="item" separator=",">
+            (#{item.stockCode}, #{item.tradeDate},
+             #{item.currentPrice}, #{item.changeRate}, #{item.priceChange}, #{item.speed},
+             #{item.turnoverRate}, #{item.volumeRatio}, #{item.amplitude},
+             #{item.turnoverAmount}, #{item.circulatingShares},
+             #{item.circMarketCap}, #{item.peRatio}, #{item.totalMarketCap})
+        </foreach>
+    </insert>
+
+</mapper>

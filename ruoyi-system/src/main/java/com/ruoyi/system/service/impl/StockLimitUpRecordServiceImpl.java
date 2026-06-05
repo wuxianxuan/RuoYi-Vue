@@ -41,7 +41,7 @@ public class StockLimitUpRecordServiceImpl implements IStockLimitUpRecordService
     }
 
     @Override
-    public String downloadAnalysisData(StockLimitUpRequest request) {
+    public String syncLimitUpData(StockLimitUpRequest request) {
         String startDate = request.getStartDate();
         String endDate = request.getEndDate();
 
