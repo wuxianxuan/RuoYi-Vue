@@ -56,6 +56,28 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             update_by = 'system',
             update_time = sysdate()
     </insert>
+    <select id="selectLimitUpStocksByDate" resultMap="StockLimitUpRecordResult">
+        SELECT secu_code, MAX(secu_name) AS secu_name
+        FROM stock_limit_up_record
+        WHERE trade_date = #{tradeDate}
+        GROUP BY secu_code
+    </select>
+
+    <select id="selectByCodesAndDateRange" resultMap="StockLimitUpRecordResult">
+        SELECT * FROM stock_limit_up_record
+        WHERE secu_code IN
+        <foreach collection="codes" item="code" open="(" separator="," close=")">
+            #{code}
+        </foreach>
+        <if test="startDate != null and startDate != ''">
+            AND trade_date &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND trade_date &lt;= #{endDate}
+        </if>
+        ORDER BY secu_code, trade_date DESC
+    </select>
+
     <select id="collectStockData" resultType="com.ruoyi.system.domain.stock.StockLimitUpRecord">
         SELECT
             id,
