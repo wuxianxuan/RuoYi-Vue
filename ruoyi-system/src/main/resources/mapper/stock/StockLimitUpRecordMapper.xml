@@ -56,10 +56,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             update_by = 'system',
             update_time = sysdate()
     </insert>
-    <select id="selectLimitUpStocksByDate" resultMap="StockLimitUpRecordResult">
+    <select id="selectFirstBoardStocksByDate" resultMap="StockLimitUpRecordResult">
         SELECT secu_code, MAX(secu_name) AS secu_name
         FROM stock_limit_up_record
         WHERE trade_date = #{tradeDate}
+          AND (up_num IS NULL OR up_num = '')
         GROUP BY secu_code
     </select>
 

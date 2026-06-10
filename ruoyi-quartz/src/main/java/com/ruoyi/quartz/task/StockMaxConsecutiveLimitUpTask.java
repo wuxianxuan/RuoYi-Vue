@@ -21,7 +21,7 @@ import java.util.stream.Collectors;
 /**
  * 涨停股票历史最大连板数分析任务
  * <p>
- * 功能：查询今日涨停的股票，从 stock_limit_up_record 表中解析 up_num 字段（格式"X天Y板"），
+ * 功能：查询今日首板涨停的股票（up_num为空），从 stock_limit_up_record 表中解析 up_num 字段（格式"X天Y板"），
  * 找出每只股票在最近3年内历史最大连板数及对应日期，筛选出大于等于指定连板数阈值的记录，结果输出为CSV文件。
  * <p>
  * 入参格式：<code>日期,最低连板数</code>，两部分均可省略。
@@ -79,10 +79,10 @@ public class StockMaxConsecutiveLimitUpTask {
         log.info("开始分析 {} 涨停股票的历史最大连板数（回溯{}年，最低≥{}板）...",
                 p.tradeDate, LOOKBACK_YEARS, p.minBoardCount);
 
-        // 1. 查询今日涨停的股票列表（按股票代码去重）
-        List<StockLimitUpRecord> todayRecords = stockLimitUpRecordMapper.selectLimitUpStocksByDate(p.tradeDate);
+        // 1. 查询今日首板涨停的股票列表（up_num为空，即刚开始涨停）
+        List<StockLimitUpRecord> todayRecords = stockLimitUpRecordMapper.selectFirstBoardStocksByDate(p.tradeDate);
         if (todayRecords == null || todayRecords.isEmpty()) {
-            log.warn("未查询到 {} 的涨停股票数据，请确认涨停采集任务(stockLimitUpCollectTask)已先行执行", p.tradeDate);
+            log.warn("未查询到 {} 的首板涨停股票数据，请确认涨停采集任务(stockLimitUpCollectTask)已先行执行", p.tradeDate);
             return;
         }
 
@@ -91,7 +91,7 @@ public class StockMaxConsecutiveLimitUpTask {
                 .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
-        log.info("{} 涨停股票数量: {}", p.tradeDate, limitUpCodes.size());
+        log.info("{} 首板涨停股票数量: {}", p.tradeDate, limitUpCodes.size());
 
         // 构建股票代码→名称映射
         Map<String, String> codeNameMap = todayRecords.stream()
@@ -140,7 +140,7 @@ public class StockMaxConsecutiveLimitUpTask {
             filteredRows.get(i)[0] = String.valueOf(i + 1);
         }
 
-        log.info("符合≥{}板条件的股票: {} 只（共 {} 只涨停）", p.minBoardCount, filteredRows.size(), allRows.size());
+        log.info("符合≥{}板条件的股票: {} 只（共 {} 只首板涨停）", p.minBoardCount, filteredRows.size(), allRows.size());
 
         // 6. 控制台日志输出
         printTable(filteredRows, p);

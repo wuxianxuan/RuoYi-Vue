@@ -11,9 +11,9 @@ public interface StockLimitUpRecordMapper {
     List<StockLimitUpRecord> collectStockData(@Param("dateStr") String dateStr);
 
     /**
-     * 查询某日涨停的股票（按股票代码去重，含名称）
+     * 查询某日首板涨停的股票（up_num为空，即刚开始涨停的股票，按股票代码去重）
      */
-    List<StockLimitUpRecord> selectLimitUpStocksByDate(@Param("tradeDate") String tradeDate);
+    List<StockLimitUpRecord> selectFirstBoardStocksByDate(@Param("tradeDate") String tradeDate);
 
     /**
      * 按股票代码列表和日期范围查询涨停记录
