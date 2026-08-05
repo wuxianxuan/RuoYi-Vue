@@ -167,4 +167,19 @@ stock:
   # 财联社数据源
   cls:
     sign: 6dfce97fbf19527e4957cca0127feafd
+  # 推荐引擎配置
+  recommend:
+    # 排除的板块名称，逗号分隔
+    excluded-plates: 其他,ST股,摘帽
+    # 出现频率分权重
+    plate-day-weight: 10
+    # 涨停占比分权重
+    plate-count-weight: 10
+    # 取前几名板块
+    top-plates: 7
+    # 回溯天数
+    lookback-days: 7
+  # 分析结果输出目录
+  analysis:
+    output-dir: ./data
 

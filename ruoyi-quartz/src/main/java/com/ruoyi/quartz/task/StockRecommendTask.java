@@ -6,12 +6,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDate;
-
 /**
  * 股票推荐定时任务
  *
- * 建议执行时间：每日16:00（收盘后），依赖 K线同步 + 指标计算 + 涨停分析任务已完成
+ * 基于板块涨停热度分析，推荐热门板块及板块内强势股票，结果输出为CSV文件。
+ * 建议执行时间：每日16:00（收盘后），依赖涨停采集任务(stockLimitUpCollectTask)已完成。
  */
 @Component("stockRecommendTask")
 public class StockRecommendTask
@@ -21,56 +20,29 @@ public class StockRecommendTask
     @Autowired
     private IStockRecommendService stockRecommendService;
 
-    /** 默认推荐 Top N */
-    private static final int DEFAULT_TOP_N = 20;
-
     /**
-     * 无参入口（默认推荐 Top 20）
+     * 执行板块热度推荐，输出CSV文件
      */
     public void recommend()
     {
-        recommend(String.valueOf(DEFAULT_TOP_N));
-    }
-
-    /**
-     * 带参入口
-     *
-     * @param params 参数：推荐数量（正整数），如 "10"、"30"
-     */
-    public void recommend(String params)
-    {
-        int topN;
+        log.info("开始执行板块热度推荐...");
         try
         {
-            topN = Integer.parseInt(params.trim());
-            if (topN <= 0)
-            {
-                log.warn("推荐数量参数无效: {}, 使用默认值 {}", params, DEFAULT_TOP_N);
-                topN = DEFAULT_TOP_N;
-            }
-            if (topN > 100)
-            {
-                log.warn("推荐数量过大: {}, 限制为100", topN);
-                topN = 100;
-            }
-        }
-        catch (NumberFormatException e)
-        {
-            log.warn("推荐数量参数解析失败: '{}', 使用默认值 {}", params, DEFAULT_TOP_N);
-            topN = DEFAULT_TOP_N;
-        }
-
-        String today = LocalDate.now().toString();
-        log.info("开始执行股票推荐: date={}, topN={}", today, topN);
-
-        try
-        {
-            int count = stockRecommendService.executeRecommend(today, topN);
-            log.info("股票推荐完成: date={}, 推荐数量={}", today, count);
+            stockRecommendService.executePlateRecommend();
         }
         catch (Exception e)
         {
-            log.error("股票推荐执行失败", e);
+            log.error("板块热度推荐执行失败", e);
         }
+    }
+
+    /**
+     * 带参入口（参数预留，当前无参也走板块推荐逻辑）
+     *
+     * @param params 参数（预留扩展）
+     */
+    public void recommend(String params)
+    {
+        recommend();
     }
 }

@@ -21,4 +21,15 @@ public interface StockLimitUpRecordMapper {
     List<StockLimitUpRecord> selectByCodesAndDateRange(@Param("codes") List<String> codes,
                                                         @Param("startDate") String startDate,
                                                         @Param("endDate") String endDate);
+
+    /**
+     * 获取最新的交易日期
+     */
+    String selectLatestTradeDate();
+
+    /**
+     * 按日期范围查询所有涨停记录
+     */
+    List<StockLimitUpRecord> selectByDateRange(@Param("startDate") String startDate,
+                                               @Param("endDate") String endDate);
 }
