@@ -34,4 +34,14 @@ public interface StockIndicatorMapper
      */
     StockIndicator selectLatestByStockCode(@Param("stockCode") String stockCode,
                                            @Param("klineType") String klineType);
+
+    /**
+     * 批量查询多只股票各自最新的技术指标
+     *
+     * @param stockCodes 股票代码列表
+     * @param klineType  K线类型
+     * @return 每只股票一条最新指标记录
+     */
+    List<StockIndicator> selectLatestByStockCodes(@Param("stockCodes") List<String> stockCodes,
+                                                   @Param("klineType") String klineType);
 }
