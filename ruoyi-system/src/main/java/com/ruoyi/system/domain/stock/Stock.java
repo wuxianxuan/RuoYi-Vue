@@ -72,14 +72,18 @@ public class Stock extends BaseEntity
     /** 概念名称列表（非持久化，列表展示用） */
     private List<String> conceptNames;
 
-    /** 行业筛选参数（非持久化） */
-    private Long industryId;
+    /** 概念名称（顿号拼接，用于导出） */
+    @Excel(name = "概念", width = 30)
+    private String conceptNamesStr;
 
-    /** 概念筛选参数（非持久化） */
+    /** 行业筛选参数（非持久化，支持多选） */
+    private Long[] industryIds;
+
+    /** 概念筛选参数（非持久化，支持多选） */
     private Long[] conceptIds;
 
-    /** 分组筛选参数（非持久化） */
-    private Long groupId;
+    /** 分组筛选参数（非持久化，支持多选） */
+    private Long[] groupIds;
 
     public void setId(Long id)
     {
@@ -195,14 +199,24 @@ public class Stock extends BaseEntity
         this.conceptNames = conceptNames;
     }
 
-    public Long getIndustryId()
+    public String getConceptNamesStr()
     {
-        return industryId;
+        return conceptNamesStr;
     }
 
-    public void setIndustryId(Long industryId)
+    public void setConceptNamesStr(String conceptNamesStr)
     {
-        this.industryId = industryId;
+        this.conceptNamesStr = conceptNamesStr;
+    }
+
+    public Long[] getIndustryIds()
+    {
+        return industryIds;
+    }
+
+    public void setIndustryIds(Long[] industryIds)
+    {
+        this.industryIds = industryIds;
     }
 
     public Long[] getConceptIds()
@@ -215,14 +229,14 @@ public class Stock extends BaseEntity
         this.conceptIds = conceptIds;
     }
 
-    public Long getGroupId()
+    public Long[] getGroupIds()
     {
-        return groupId;
+        return groupIds;
     }
 
-    public void setGroupId(Long groupId)
+    public void setGroupIds(Long[] groupIds)
     {
-        this.groupId = groupId;
+        this.groupIds = groupIds;
     }
 
     @Override

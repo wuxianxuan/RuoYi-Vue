@@ -50,12 +50,20 @@
             <if test="stockCode != null  and stockCode != ''"> and s.stock_code = #{stockCode}</if>
             <if test="stockName != null  and stockName != ''"> and s.stock_name like concat('%', #{stockName}, '%')</if>
             <if test="market != null  and market != ''"> and s.market = #{market}</if>
-            <if test="industryId != null">
+            <if test="industryIds != null and industryIds.length > 0">
                 and EXISTS (
                 select 1 from stock_plate_stock sps
                 inner join stock_plate sp on sps.plate_id = sp.id
                 where sps.stock_id = s.id and sp.plate_type = 'INDUSTRY'
-                and (sp.id = #{industryId} or FIND_IN_SET(#{industryId}, sp.ancestors))
+                and (
+                    sp.id in
+                    <foreach item="industryId" collection="industryIds" open="(" separator="," close=")">
+                        #{industryId}
+                    </foreach>
+                    <foreach item="industryId" collection="industryIds">
+                        or FIND_IN_SET(#{industryId}, sp.ancestors)
+                    </foreach>
+                )
                 )
             </if>
             <if test="conceptIds != null and conceptIds.length > 0">
@@ -69,10 +77,13 @@
                 </foreach>
                 )
             </if>
-            <if test="groupId != null">
+            <if test="groupIds != null and groupIds.length > 0">
                 and EXISTS (
                     select 1 from stock_group_stock sgs
-                    where sgs.stock_id = s.id and sgs.group_id = #{groupId}
+                    where sgs.stock_id = s.id and sgs.group_id in
+                    <foreach item="groupId" collection="groupIds" open="(" separator="," close=")">
+                        #{groupId}
+                    </foreach>
                 )
             </if>
         </where>

@@ -1,6 +1,7 @@
 package com.ruoyi.web.controller.stock;
 
 import java.util.List;
+import java.io.IOException;
 
 import com.ruoyi.system.domain.stock.Stock;
 import jakarta.servlet.http.HttpServletResponse;
@@ -56,6 +57,30 @@ public class StockController extends BaseController
         List<Stock> list = stockService.selectStockList(stock);
         ExcelUtil<Stock> util = new ExcelUtil<Stock>(Stock.class);
         util.exportExcel(response, list, "股票基础数据");
+    }
+
+    /**
+     * 导出股票代码列表（TXT，一行一个股票代码）
+     */
+    @Log(title = "股票基础", businessType = BusinessType.EXPORT)
+    @PostMapping("/exportTxt")
+    public void exportTxt(HttpServletResponse response, Stock stock) throws IOException
+    {
+        List<Stock> list = stockService.selectStockList(stock);
+        StringBuilder sb = new StringBuilder();
+        if (list != null)
+        {
+            for (Stock s : list)
+            {
+                if (s.getStockCode() != null && !s.getStockCode().isEmpty())
+                {
+                    sb.append(s.getStockCode()).append("\n");
+                }
+            }
+        }
+        response.setContentType("text/plain;charset=utf-8");
+        response.setHeader("Content-Disposition", "attachment; filename=stock_codes.txt");
+        response.getWriter().write(sb.toString());
     }
 
     /**

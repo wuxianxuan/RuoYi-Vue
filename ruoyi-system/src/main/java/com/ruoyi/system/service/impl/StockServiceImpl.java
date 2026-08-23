@@ -58,7 +58,9 @@ public class StockServiceImpl implements IStockService
                 conceptMap.computeIfAbsent(stockId, k -> new java.util.ArrayList<>()).add(conceptName);
             }
             for (Stock s : list) {
-                s.setConceptNames(conceptMap.getOrDefault(s.getId(), java.util.Collections.emptyList()));
+                List<String> names = conceptMap.getOrDefault(s.getId(), java.util.Collections.emptyList());
+                s.setConceptNames(names);
+                s.setConceptNamesStr(String.join("、", names));
             }
         }
         return list;
