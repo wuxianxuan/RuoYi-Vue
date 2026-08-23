@@ -9,8 +9,10 @@ import org.springframework.stereotype.Component;
 /**
  * 股票推荐定时任务
  *
- * 基于板块涨停热度分析，推荐热门板块及板块内强势股票，结果输出为CSV文件。
- * 建议执行时间：每日16:00（收盘后），依赖涨停采集任务(stockLimitUpCollectTask)已完成。
+ * 遍历 focus_flag=1 的重点关注板块（行业+概念），对每个板块下属股票按
+ * 「强势趋势中继」打分，取 Top N 只值得入场的股票生成分组。
+ * 建议执行时间：每日16:00（收盘后），依赖 K线同步(stockKlineSyncTask)与
+ * 指标计算(stockIndicatorCalcTask)已完成。
  */
 @Component("stockRecommendTask")
 public class StockRecommendTask
@@ -21,18 +23,18 @@ public class StockRecommendTask
     private IStockRecommendService stockRecommendService;
 
     /**
-     * 执行板块热度推荐，输出CSV文件
+     * 执行重点关注板块入场推荐，生成分组
      */
     public void recommend()
     {
-        log.info("开始执行板块热度推荐...");
+        log.info("开始执行重点关注板块入场推荐...");
         try
         {
-            stockRecommendService.executePlateRecommend();
+            stockRecommendService.executeFocusPlateRecommend();
         }
         catch (Exception e)
         {
-            log.error("板块热度推荐执行失败", e);
+            log.error("重点关注板块入场推荐执行失败", e);
         }
     }
 

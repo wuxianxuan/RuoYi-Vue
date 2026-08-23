@@ -29,6 +29,11 @@ public interface StockPlateMapper {
     public List<StockPlate> selectIndustryPlateList();
 
     /**
+     * 查询所有概念板块（扁平列表，供前端展示）
+     */
+    public List<StockPlate> selectConceptPlateList();
+
+    /**
      * 新增板块
      */
     public int insertPlate(StockPlate stockPlate);

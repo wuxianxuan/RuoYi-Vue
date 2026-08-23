@@ -44,6 +44,11 @@ public interface IStockPlateService {
     public List<StockPlate> selectIndustryPlateList();
 
     /**
+     * 查询所有概念板块（扁平列表，供前端展示）
+     */
+    public List<StockPlate> selectConceptPlateList();
+
+    /**
      * 是否存在子板块
      */
     public boolean hasChildByParentId(Long parentId);

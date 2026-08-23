@@ -103,6 +103,10 @@ public class StockPlateInfoSyncTask
         DEFAULT_PLATES.put("885756", new PlateConfig("芯片概念", "CONCEPT"));
         DEFAULT_PLATES.put("886015", new PlateConfig("创新药", "CONCEPT"));
         DEFAULT_PLATES.put("886019", new PlateConfig("AIGC概念", "CONCEPT"));
+        DEFAULT_PLATES.put("885530", new PlateConfig("黄金概念", "CONCEPT"));
+        DEFAULT_PLATES.put("885428", new PlateConfig("特钢概念", "CONCEPT"));
+        DEFAULT_PLATES.put("885914", new PlateConfig("煤炭概念", "CONCEPT"));
+        DEFAULT_PLATES.put("885398", new PlateConfig("煤化工概念", "CONCEPT"));
     }
 
     private final ObjectMapper objectMapper = new ObjectMapper()

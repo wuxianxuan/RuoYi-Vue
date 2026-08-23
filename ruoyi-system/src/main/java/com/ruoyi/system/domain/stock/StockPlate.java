@@ -36,6 +36,9 @@ public class StockPlate extends BaseEntity {
     /** 排序 */
     private Integer sortOrder;
 
+    /** 是否需要重点关注（1需要 0不需要） */
+    private Integer focusFlag;
+
     /** 子板块列表（非持久化，用于树形展示） */
     private List<StockPlate> children;
 

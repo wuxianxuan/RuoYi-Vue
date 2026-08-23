@@ -12,6 +12,7 @@
         <result property="ancestors"   column="ancestors"   />
         <result property="level"       column="level"       />
         <result property="sortOrder"   column="sort_order"  />
+        <result property="focusFlag" column="focus_flag" />
         <result property="createBy"    column="create_by"   />
         <result property="createTime"  column="create_time" />
         <result property="updateBy"    column="update_by"   />
@@ -20,7 +21,7 @@
     </resultMap>
 
     <sql id="selectPlateVo">
-        select id, plate_name, plate_type, parent_id, ancestors, level, sort_order,
+        select id, plate_name, plate_type, parent_id, ancestors, level, sort_order, focus_flag,
                create_by, create_time, update_by, update_time, remark
         from stock_plate
     </sql>
@@ -37,6 +38,9 @@
             <if test="parentId != null">
                 AND parent_id = #{parentId}
             </if>
+            <if test="focusFlag != null">
+                AND focus_flag = #{focusFlag}
+            </if>
         </where>
         order by sort_order asc, id desc
     </select>
@@ -52,6 +56,12 @@
         order by sort_order asc, id asc
     </select>
 
+    <select id="selectConceptPlateList" resultMap="StockPlateResult">
+        <include refid="selectPlateVo"/>
+        where plate_type = 'CONCEPT'
+        order by sort_order asc, id asc
+    </select>
+
     <insert id="insertPlate" parameterType="StockPlate" useGeneratedKeys="true" keyProperty="id">
         insert into stock_plate (
         <if test="plateName != null and plateName != ''">plate_name,</if>
@@ -60,6 +70,7 @@
         <if test="ancestors != null and ancestors != ''">ancestors,</if>
         <if test="level != null">level,</if>
         <if test="sortOrder != null">sort_order,</if>
+        <if test="focusFlag != null">focus_flag,</if>
         <if test="remark != null and remark != ''">remark,</if>
         <if test="createBy != null and createBy != ''">create_by,</if>
         create_time
@@ -70,6 +81,7 @@
         <if test="ancestors != null and ancestors != ''">#{ancestors},</if>
         <if test="level != null">#{level},</if>
         <if test="sortOrder != null">#{sortOrder},</if>
+        <if test="focusFlag != null">#{focusFlag},</if>
         <if test="remark != null and remark != ''">#{remark},</if>
         <if test="createBy != null and createBy != ''">#{createBy},</if>
         sysdate()
@@ -85,6 +97,7 @@
             <if test="ancestors != null">ancestors = #{ancestors},</if>
             <if test="level != null">level = #{level},</if>
             <if test="sortOrder != null">sort_order = #{sortOrder},</if>
+            <if test="focusFlag != null">focus_flag = #{focusFlag},</if>
             <if test="remark != null">remark = #{remark},</if>
             <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
             update_time = sysdate()
@@ -110,6 +123,7 @@
     <!-- 板块下的关联股票 -->
     <select id="selectPlateStocksByPlateId" parameterType="Long" resultMap="com.ruoyi.system.mapper.StockMapper.StockResult">
         select s.id, s.stock_code, s.stock_name, s.market, s.industry_name,
+               s.current_price, s.change_rate, s.turnover_rate, s.volume_ratio, s.turnover_amount,
                s.create_by, s.create_time, s.update_by, s.update_time, s.remark
         from stock s
                  inner join stock_plate_stock sps on s.id = sps.stock_id

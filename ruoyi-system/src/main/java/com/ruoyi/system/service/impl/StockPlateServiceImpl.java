@@ -154,6 +154,11 @@ public class StockPlateServiceImpl implements IStockPlateService {
     }
 
     @Override
+    public List<StockPlate> selectConceptPlateList() {
+        return stockPlateMapper.selectConceptPlateList();
+    }
+
+    @Override
     public boolean hasChildByParentId(Long parentId) {
         return stockPlateMapper.hasChildByParentId(parentId) > 0;
     }

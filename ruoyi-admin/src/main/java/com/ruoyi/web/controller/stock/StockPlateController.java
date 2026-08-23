@@ -91,6 +91,15 @@ public class StockPlateController extends BaseController {
     }
 
     /**
+     * 查询概念板块列表（不分页，返回全量）
+     */
+    @GetMapping("/concept/list")
+    public AjaxResult conceptList() {
+        List<StockPlate> list = stockPlateService.selectConceptPlateList();
+        return success(list);
+    }
+
+    /**
      * 获取板块下的股票列表（分页）
      */
     @GetMapping("/{id}/stocks")

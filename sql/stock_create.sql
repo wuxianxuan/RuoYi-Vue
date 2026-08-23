@@ -158,6 +158,7 @@ CREATE TABLE `stock_plate` (
                                `ancestors` varchar(500) DEFAULT '' COMMENT '祖级列表',
                                `level` tinyint NOT NULL COMMENT '层级（1/2/3）',
                                `sort_order` int DEFAULT '0' COMMENT '排序',
+                               `focus_flag` tinyint NOT NULL DEFAULT 0 COMMENT '是否需要重点关注(1需要 0不需要)',
                                `create_by` varchar(64) DEFAULT '' COMMENT '创建者',
                                `create_time` datetime DEFAULT NULL COMMENT '创建时间',
                                `update_by` varchar(64) DEFAULT '' COMMENT '更新者',

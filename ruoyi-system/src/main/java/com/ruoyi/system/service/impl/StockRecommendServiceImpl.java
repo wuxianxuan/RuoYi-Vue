@@ -1,7 +1,12 @@
 package com.ruoyi.system.service.impl;
 
-import com.ruoyi.system.domain.stock.StockLimitUpRecord;
-import com.ruoyi.system.mapper.StockLimitUpRecordMapper;
+import com.ruoyi.system.domain.stock.Stock;
+import com.ruoyi.system.domain.stock.StockGroup;
+import com.ruoyi.system.domain.stock.StockIndicator;
+import com.ruoyi.system.domain.stock.StockPlate;
+import com.ruoyi.system.mapper.StockIndicatorMapper;
+import com.ruoyi.system.service.IStockGroupService;
+import com.ruoyi.system.service.IStockPlateService;
 import com.ruoyi.system.service.IStockRecommendService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,20 +14,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.io.*;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
 /**
  * 股票推荐引擎实现
  *
- * 基于板块涨停热度分析，输出 Top N 热门板块及板块内强势股票 CSV
+ * 基于「重点关注」板块（focus_flag=1），对每个板块下属股票按
+ * 「强势趋势中继」多因子打分，取 Top N 只值得入场的股票生成分组。
  */
 @Service
 public class StockRecommendServiceImpl implements IStockRecommendService
@@ -30,312 +31,284 @@ public class StockRecommendServiceImpl implements IStockRecommendService
     private static final Logger log = LoggerFactory.getLogger(StockRecommendServiceImpl.class);
 
     @Autowired
-    private StockLimitUpRecordMapper stockLimitUpRecordMapper;
+    private IStockPlateService stockPlateService;
 
-    // ==================== 配置项 ====================
+    @Autowired
+    private StockIndicatorMapper stockIndicatorMapper;
 
-    @Value("${stock.recommend.excluded-plates:}")
-    private String excludedPlates;
+    @Autowired
+    private IStockGroupService stockGroupService;
 
-    @Value("${stock.recommend.plate-day-weight:10}")
-    private int plateDayWeight;
+    /** 每个重点板块取几只股票 */
+    @Value("${stock.recommend.top-stocks:10}")
+    private int topStocks;
 
-    @Value("${stock.recommend.plate-count-weight:10}")
-    private int plateCountWeight;
+    /** 生成分组名前缀 */
+    @Value("${stock.recommend.group-prefix:入场}")
+    private String groupPrefix;
 
-    @Value("${stock.recommend.top-plates:7}")
-    private int topPlates;
+    /** 换手率阈值：低于此值视为冷门（资金热度 0 分） */
+    @Value("${stock.recommend.turnover-cold:1}")
+    private BigDecimal turnoverCold;
 
-    @Value("${stock.recommend.lookback-days:7}")
-    private int lookbackDays;
+    /** 换手率健康区间下限（%） */
+    @Value("${stock.recommend.turnover-healthy-low:2}")
+    private BigDecimal turnoverHealthyLow;
 
-    @Value("${stock.analysis.output-dir:./data}")
-    private String outputDir;
+    /** 换手率健康区间上限（%） */
+    @Value("${stock.recommend.turnover-healthy-high:10}")
+    private BigDecimal turnoverHealthyHigh;
 
-    /** CSV BOM header for UTF-8 Excel compatibility */
-    private static final String CSV_BOM = "﻿";
+    /** 换手率过热阈值（%），高于此值视为异常过热 */
+    @Value("${stock.recommend.turnover-hot-high:20}")
+    private BigDecimal turnoverHotHigh;
 
-    /** 板块推荐 CSV 表头 */
-    private static final String PLATE_CSV_HEADER = "板块名称,板块得分,股票代码,股票名称,股票上榜天数,股票最新上榜时间";
-
-    // ==================== 板块热度推荐引擎 ====================
+    /** 成交额下限过滤（单位与 stock.turnover_amount 一致），0 表示不过滤 */
+    @Value("${stock.recommend.min-turnover-amount:0}")
+    private BigDecimal minTurnoverAmount;
 
     @Override
-    public void executePlateRecommend()
+    public void executeFocusPlateRecommend()
     {
-        log.info("========== 板块热度推荐引擎开始 ==========");
+        log.info("========== 重点关注板块入场推荐引擎开始 ==========");
 
-        // 1. 获取最新交易日
-        String latestDate = stockLimitUpRecordMapper.selectLatestTradeDate();
-        if (latestDate == null || latestDate.isEmpty())
+        // 1. 查询重点关注板块（focus_flag = 1）
+        StockPlate filter = new StockPlate();
+        filter.setFocusFlag(1);
+        List<StockPlate> plates = stockPlateService.selectPlateList(filter);
+        if (plates == null || plates.isEmpty())
         {
-            log.warn("stock_limit_up_record 表中无数据，请先执行涨停采集任务");
+            log.warn("无板块配置重点关注（focus_flag=1），跳过推荐");
             return;
         }
-        log.info("最新交易日: {}", latestDate);
+        log.info("重点关注板块/概念共 {} 个", plates.size());
 
-        // 2. 计算回溯起始日期
-        String startDate = LocalDate.parse(latestDate, DateTimeFormatter.ofPattern("yyyyMMdd"))
-                .minusDays(lookbackDays)
-                .format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String dateStr = LocalDate.now().toString();
+        int groupCount = 0;
 
-        // 3. 查询过去 N 天所有涨停记录
-        List<StockLimitUpRecord> allRecords =
-                stockLimitUpRecordMapper.selectByDateRange(startDate, latestDate);
-        if (allRecords == null || allRecords.isEmpty())
+        for (StockPlate plate : plates)
         {
-            log.warn("未查询到 {}-{} 的涨停记录", startDate, latestDate);
-            return;
-        }
-        log.info("查询到 {} 条涨停记录 ({} ~ {})", allRecords.size(), startDate, latestDate);
-
-        // 4. 解析排除板块名单
-        Set<String> excludedPlateSet = parseExcludedPlates();
-        log.info("排除板块: {}", excludedPlateSet.isEmpty() ? "无" : excludedPlateSet);
-
-        // 5. 过滤排除板块后的记录
-        List<StockLimitUpRecord> filteredRecords = allRecords.stream()
-                .filter(r -> r.getPlateSecuName() != null
-                        && !excludedPlateSet.contains(r.getPlateSecuName().trim()))
-                .collect(Collectors.toList());
-        log.info("过滤后剩余 {} 条记录", filteredRecords.size());
-
-        if (filteredRecords.isEmpty())
-        {
-            log.warn("过滤后无可用涨停记录");
-            return;
-        }
-
-        // 6. 按板块分组，计算各项统计指标
-        Map<String, List<StockLimitUpRecord>> recordsByPlate =
-                filteredRecords.stream()
-                        .collect(Collectors.groupingBy(r -> r.getPlateSecuName().trim()));
-
-        // 7天内所有未过滤板块的涨停总记录数（用于计算涨停占比分）
-        int totalRecordCount = filteredRecords.size();
-
-        // 计算每个板块的得分
-        List<PlateScore> plateScores = new ArrayList<>();
-        for (Map.Entry<String, List<StockLimitUpRecord>> entry : recordsByPlate.entrySet())
-        {
-            String plateName = entry.getKey();
-            List<StockLimitUpRecord> plateRecords = entry.getValue();
-
-            // 出现天数（去重 trade_date）
-            long appearDays = plateRecords.stream()
-                    .map(StockLimitUpRecord::getTradeDate)
-                    .distinct()
-                    .count();
-
-            // 出现频率分 = (出现天数 / 回溯天数) × 权重
-            BigDecimal dayScore = BigDecimal.valueOf(appearDays)
-                    .divide(BigDecimal.valueOf(lookbackDays), 4, RoundingMode.HALF_UP)
-                    .multiply(BigDecimal.valueOf(plateDayWeight));
-
-            // 涨停占比分 = (板块记录数 / 总记录数) × 权重
-            BigDecimal countScore = BigDecimal.valueOf(plateRecords.size())
-                    .divide(BigDecimal.valueOf(totalRecordCount), 4, RoundingMode.HALF_UP)
-                    .multiply(BigDecimal.valueOf(plateCountWeight));
-
-            // 总分
-            BigDecimal totalScore = dayScore.add(countScore);
-
-            plateScores.add(new PlateScore(plateName, totalScore, dayScore, countScore,
-                    (int) appearDays, plateRecords.size(), plateRecords));
-        }
-
-        // 7. 按总分降序，取 Top N 板块
-        plateScores.sort(Comparator.comparing(PlateScore::getTotalScore).reversed());
-        List<PlateScore> topPlateScores = plateScores.subList(0, Math.min(topPlates, plateScores.size()));
-
-        log.info("========== Top {} 板块评分 ==========", topPlateScores.size());
-        for (int i = 0; i < topPlateScores.size(); i++)
-        {
-            PlateScore ps = topPlateScores.get(i);
-            log.info("  {}. {} 总分={} (出现频率分={}, 涨停占比分={}, 出现{}天, 涨停{}次)",
-                    i + 1, ps.plateName, ps.totalScore.setScale(2, RoundingMode.HALF_UP),
-                    ps.dayScore.setScale(2, RoundingMode.HALF_UP),
-                    ps.countScore.setScale(2, RoundingMode.HALF_UP),
-                    ps.appearDays, ps.recordCount);
-        }
-
-        // 8. 对每个 Top 板块，列出股票并按规则排序
-        List<String[]> csvRows = new ArrayList<>();
-        for (PlateScore ps : topPlateScores)
-        {
-            // 按股票分组统计
-            Map<String, List<StockLimitUpRecord>> stocksInPlate =
-                    ps.records.stream()
-                            .filter(r -> r.getSecuCode() != null)
-                            .collect(Collectors.groupingBy(StockLimitUpRecord::getSecuCode));
-
-            // 计算每只股票的统计信息
-            List<StockInPlate> stockList = new ArrayList<>();
-            for (Map.Entry<String, List<StockLimitUpRecord>> se : stocksInPlate.entrySet())
+            try
             {
-                String stockCode = se.getKey();
-                List<StockLimitUpRecord> stockRecords = se.getValue();
-
-                int appearCount = stockRecords.size();
-                String stockName = stockRecords.get(0).getSecuName() != null
-                        ? stockRecords.get(0).getSecuName() : "";
-
-                // 最新上榜时间：找 trade_date 最大，相同 trade_date 找 time 最晚的
-                StockLimitUpRecord latest = stockRecords.stream()
-                        .max(Comparator.comparing(StockLimitUpRecord::getTradeDate)
-                                .thenComparing(r -> r.getTime() != null ? r.getTime() : ""))
-                        .orElse(stockRecords.get(0));
-                String latestTime = (latest.getTradeDate() != null ? latest.getTradeDate() : "")
-                        + (latest.getTime() != null ? " " + latest.getTime() : "");
-
-                stockList.add(new StockInPlate(stockCode, stockName, appearCount, latestTime));
-            }
-
-            // 排序：出现次数降序，最新时间升序（最近出现的排前面）
-            stockList.sort(Comparator
-                    .comparing(StockInPlate::getAppearCount).reversed()
-                    .thenComparing(StockInPlate::getLatestTime));
-
-            for (StockInPlate si : stockList)
-            {
-                csvRows.add(new String[]{
-                        ps.plateName,
-                        ps.totalScore.setScale(2, RoundingMode.HALF_UP).toString(),
-                        si.stockCode,
-                        si.stockName,
-                        String.valueOf(si.appearCount),
-                        si.latestTime
-                });
-            }
-        }
-
-        // 9. 写入 CSV
-        String csvPath = writePlateCsv(latestDate, csvRows);
-        log.info("板块推荐结果已写入CSV: {}", csvPath);
-        log.info("========== 板块热度推荐引擎完成: {} 个板块, {} 只股票 ==========",
-                topPlateScores.size(), csvRows.size());
-    }
-
-    // ==================== 辅助方法 ====================
-
-    /**
-     * 解析排除板块名单
-     */
-    private Set<String> parseExcludedPlates()
-    {
-        if (excludedPlates == null || excludedPlates.trim().isEmpty())
-        {
-            return Collections.emptySet();
-        }
-        return Arrays.stream(excludedPlates.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toSet());
-    }
-
-    /**
-     * 将板块推荐结果写入 CSV（UTF-8 BOM）
-     */
-    private String writePlateCsv(String tradeDate, List<String[]> rows)
-    {
-        try
-        {
-            Path dir = Paths.get(outputDir);
-            if (!Files.exists(dir))
-            {
-                Files.createDirectories(dir);
-            }
-            String filename = String.format("plate_recommend_%s.csv", tradeDate);
-            Path file = dir.resolve(filename);
-
-            try (BufferedWriter writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8))
-            {
-                writer.write(CSV_BOM + PLATE_CSV_HEADER);
-                writer.newLine();
-                for (String[] row : rows)
+                if (recommendForPlate(plate, dateStr) > 0)
                 {
-                    writer.write(toCsvLine(row));
-                    writer.newLine();
+                    groupCount++;
                 }
             }
-            return file.toAbsolutePath().toString();
+            catch (Exception e)
+            {
+                log.error("板块 [{}] 入场推荐异常", plate.getPlateName(), e);
+            }
         }
-        catch (IOException e)
-        {
-            log.error("写入板块推荐CSV失败: {}", e.getMessage(), e);
-            return "[写入失败: " + e.getMessage() + "]";
-        }
+
+        log.info("========== 重点关注板块入场推荐完成: 生成分组 {} 个 ==========", groupCount);
     }
 
     /**
-     * 将字符串数组转为 CSV 行（处理逗号和引号转义）
+     * 对单个重点板块计算值得入场的 Top N 股票并生成分组
+     *
+     * @return 生成分组中的股票数（0 表示未生成分组）
      */
-    private String toCsvLine(String[] fields)
+    private int recommendForPlate(StockPlate plate, String dateStr)
     {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < fields.length; i++)
+        // 2. 板块成分股
+        List<Stock> stocks = stockPlateService.selectPlateStocks(plate.getId());
+        if (stocks == null || stocks.isEmpty())
         {
-            if (i > 0) sb.append(',');
-            String f = fields[i] != null ? fields[i] : "";
-            if (f.contains(",") || f.contains("\"") || f.contains("\n"))
-            {
-                f = f.replace("\"", "\"\"");
-                sb.append('"').append(f).append('"');
-            }
-            else
-            {
-                sb.append(f);
-            }
-        }
-        return sb.toString();
-    }
-
-    // ==================== 内部类 ====================
-
-    /** 板块评分结果 */
-    static class PlateScore
-    {
-        final String plateName;
-        final BigDecimal totalScore;
-        final BigDecimal dayScore;
-        final BigDecimal countScore;
-        final int appearDays;
-        final int recordCount;
-        final List<StockLimitUpRecord> records;
-
-        PlateScore(String plateName, BigDecimal totalScore, BigDecimal dayScore,
-                   BigDecimal countScore, int appearDays, int recordCount,
-                   List<StockLimitUpRecord> records)
-        {
-            this.plateName = plateName;
-            this.totalScore = totalScore;
-            this.dayScore = dayScore;
-            this.countScore = countScore;
-            this.appearDays = appearDays;
-            this.recordCount = recordCount;
-            this.records = records;
+            log.warn("板块 [{}] 无成分股，跳过", plate.getPlateName());
+            return 0;
         }
 
-        BigDecimal getTotalScore() { return totalScore; }
+        // 3. 批量获取最新技术指标
+        List<String> codes = stocks.stream()
+                .map(Stock::getStockCode)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+
+        Map<String, StockIndicator> indicatorMap = new HashMap<>();
+        if (!codes.isEmpty())
+        {
+            List<StockIndicator> indicators = stockIndicatorMapper.selectLatestByStockCodes(codes, "D");
+            if (indicators != null)
+            {
+                for (StockIndicator ind : indicators)
+                {
+                    indicatorMap.put(ind.getStockCode(), ind);
+                }
+            }
+        }
+
+        // 4. 逐股打分（指标缺失或流动性不足的股票跳过）
+        List<ScoredStock> scored = new ArrayList<>();
+        int liquidityFiltered = 0;
+        for (Stock s : stocks)
+        {
+            StockIndicator ind = indicatorMap.get(s.getStockCode());
+            if (ind == null)
+            {
+                continue;
+            }
+            // 流动性过滤：成交额低于下限不推荐（0 表示不过滤）
+            if (minTurnoverAmount != null && minTurnoverAmount.compareTo(BigDecimal.ZERO) > 0
+                    && (s.getTurnoverAmount() == null || s.getTurnoverAmount().compareTo(minTurnoverAmount) < 0))
+            {
+                liquidityFiltered++;
+                continue;
+            }
+            scored.add(new ScoredStock(s.getId(), s.getStockCode(), s.getStockName(), scoreEntry(s, ind)));
+        }
+
+        if (liquidityFiltered > 0)
+        {
+            log.info("板块 [{}] 成交额低于下限被过滤 {} 只", plate.getPlateName(), liquidityFiltered);
+        }
+
+        if (scored.isEmpty())
+        {
+            log.warn("板块 [{}] 无可用指标数据，跳过", plate.getPlateName());
+            return 0;
+        }
+
+        // 5. 按得分降序取 Top N
+        scored.sort(Comparator.comparingInt(ScoredStock::getScore).reversed());
+        int topN = Math.min(topStocks, scored.size());
+        List<ScoredStock> top = scored.subList(0, topN);
+
+        // 6. 生成分组
+        String groupName = groupPrefix + "_" + dateStr + "_" + plate.getPlateName();
+        StockGroup group = new StockGroup();
+        group.setGroupName(groupName);
+        group.setStockIds(top.stream().map(ScoredStock::getId).toArray(Long[]::new));
+        group.setCreateBy("system");
+        group.setRemark(String.format("Top%d 最高分%d", topN, top.get(0).getScore()));
+
+        stockGroupService.insertGroup(group);
+        log.info("创建入场分组: [{}], 股票数={}, 最高分={}", groupName, topN, top.get(0).getScore());
+        for (ScoredStock ss : top)
+        {
+            log.info("  {} {} 评分={}", ss.getStockCode(), ss.getStockName(), ss.getScore());
+        }
+        return topN;
     }
 
-    /** 板块内股票统计 */
-    static class StockInPlate
+    /**
+     * 强势趋势中继打分（满分 100）
+     * 因子：趋势多头排列(20) + MACD多头(15) + RSI健康(15) + 资金热度·换手率(20)
+     *       + 量能·量比(15) + 趋势斜率向上(15)
+     */
+    private int scoreEntry(Stock stock, StockIndicator ind)
     {
-        final String stockCode;
-        final String stockName;
-        final int appearCount;
-        final String latestTime;
+        int score = 0;
 
-        StockInPlate(String stockCode, String stockName, int appearCount, String latestTime)
+        // 1. 趋势多头排列（20）
+        BigDecimal ma5 = ind.getMa5();
+        BigDecimal ma10 = ind.getMa10();
+        BigDecimal ma20 = ind.getMa20();
+        if (ma5 != null && ma10 != null && ma20 != null)
         {
+            if (ma5.compareTo(ma10) > 0 && ma10.compareTo(ma20) > 0)
+            {
+                score += 20;
+            }
+            else if (ma5.compareTo(ma20) > 0)
+            {
+                score += 12;
+            }
+        }
+
+        // 2. MACD 多头（15）
+        if (ind.getMacdDif() != null && ind.getMacdDea() != null
+                && ind.getMacdDif().compareTo(ind.getMacdDea()) > 0)
+        {
+            score += 15;
+        }
+
+        // 3. RSI 健康动能（15）
+        BigDecimal rsi = ind.getRsi14();
+        if (rsi != null)
+        {
+            BigDecimal fifty = new BigDecimal("50");
+            BigDecimal seventyFive = new BigDecimal("75");
+            BigDecimal fortyFive = new BigDecimal("45");
+            BigDecimal eighty = new BigDecimal("80");
+            if (rsi.compareTo(fifty) >= 0 && rsi.compareTo(seventyFive) <= 0)
+            {
+                score += 15;
+            }
+            else if ((rsi.compareTo(fortyFive) >= 0 && rsi.compareTo(fifty) < 0)
+                    || (rsi.compareTo(seventyFive) > 0 && rsi.compareTo(eighty) <= 0))
+            {
+                score += 8;
+            }
+        }
+
+        // 4. 资金热度·换手率（20）：换手率过低说明无资金参与，趋势再好也难有后续
+        BigDecimal turnoverRate = stock.getTurnoverRate();
+        if (turnoverRate != null)
+        {
+            if (turnoverRate.compareTo(turnoverHealthyLow) >= 0 && turnoverRate.compareTo(turnoverHealthyHigh) <= 0)
+            {
+                score += 20; // 健康活跃
+            }
+            else if ((turnoverRate.compareTo(turnoverCold) >= 0 && turnoverRate.compareTo(turnoverHealthyLow) < 0)
+                    || (turnoverRate.compareTo(turnoverHealthyHigh) > 0 && turnoverRate.compareTo(turnoverHotHigh) <= 0))
+            {
+                score += 12; // 一般/偏热
+            }
+            else if (turnoverRate.compareTo(turnoverHotHigh) > 0)
+            {
+                score += 8; // 异常过热
+            }
+            // 低于 turnoverCold：冷门，得 0 分
+        }
+
+        // 5. 量能·量比（15）
+        BigDecimal volRatio = ind.getVolRatio();
+        if (volRatio != null)
+        {
+            BigDecimal one = BigDecimal.ONE;
+            BigDecimal three = new BigDecimal("3");
+            BigDecimal pointEight = new BigDecimal("0.8");
+            if (volRatio.compareTo(one) >= 0 && volRatio.compareTo(three) <= 0)
+            {
+                score += 15;
+            }
+            else if (volRatio.compareTo(three) > 0
+                    || (volRatio.compareTo(pointEight) >= 0 && volRatio.compareTo(one) < 0))
+            {
+                score += 8;
+            }
+        }
+
+        // 6. 趋势斜率向上（15）
+        if (ind.getTrendSlope() != null && ind.getTrendSlope().compareTo(BigDecimal.ZERO) > 0)
+        {
+            score += 15;
+        }
+
+        return score;
+    }
+
+    /** 打分结果内部类 */
+    private static class ScoredStock
+    {
+        private final Long id;
+        private final String stockCode;
+        private final String stockName;
+        private final int score;
+
+        ScoredStock(Long id, String stockCode, String stockName, int score)
+        {
+            this.id = id;
             this.stockCode = stockCode;
             this.stockName = stockName;
-            this.appearCount = appearCount;
-            this.latestTime = latestTime;
+            this.score = score;
         }
 
-        int getAppearCount() { return appearCount; }
-        String getLatestTime() { return latestTime; }
+        Long getId() { return id; }
+        String getStockCode() { return stockCode; }
+        String getStockName() { return stockName; }
+        int getScore() { return score; }
     }
 }
