@@ -169,16 +169,20 @@ stock:
     sign: 6dfce97fbf19527e4957cca0127feafd
   # 推荐引擎配置
   recommend:
-    # 排除的板块名称，逗号分隔
-    excluded-plates: 其他,ST股,摘帽
-    # 出现频率分权重
-    plate-day-weight: 10
-    # 涨停占比分权重
-    plate-count-weight: 10
-    # 取前几名板块
-    top-plates: 7
-    # 回溯天数
-    lookback-days: 7
+    # 每个重点板块取几只「值得入场」股票
+    top-stocks: 10
+    # 生成分组名前缀
+    group-prefix: 入场
+    # 换手率阈值（%，按百分比数值理解，如 3.5 表示 3.5%）
+    # 低于 turnover-cold 视为冷门（资金热度 0 分）
+    turnover-cold: 1
+    # 健康活跃区间 [turnover-healthy-low, turnover-healthy-high]
+    turnover-healthy-low: 2
+    turnover-healthy-high: 10
+    # 高于 turnover-hot-high 视为异常过热
+    turnover-hot-high: 20
+    # 成交额下限过滤（单位与 stock.turnover_amount 一致），0 表示不过滤
+    min-turnover-amount: 0
   # 分析结果输出目录
   analysis:
     output-dir: ./data
