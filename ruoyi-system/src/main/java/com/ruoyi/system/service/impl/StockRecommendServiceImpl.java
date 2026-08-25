@@ -6,6 +6,7 @@ import com.ruoyi.system.domain.stock.StockIndicator;
 import com.ruoyi.system.domain.stock.StockPlate;
 import com.ruoyi.system.mapper.StockIndicatorMapper;
 import com.ruoyi.system.service.IStockGroupService;
+import com.ruoyi.system.service.IStockLimitUpStatService;
 import com.ruoyi.system.service.IStockPlateService;
 import com.ruoyi.system.service.IStockRecommendService;
 import org.slf4j.Logger;
@@ -39,6 +40,9 @@ public class StockRecommendServiceImpl implements IStockRecommendService
     @Autowired
     private IStockGroupService stockGroupService;
 
+    @Autowired
+    private IStockLimitUpStatService stockLimitUpStatService;
+
     /** 每个重点板块取几只股票 */
     @Value("${stock.recommend.top-stocks:10}")
     private int topStocks;
@@ -66,6 +70,10 @@ public class StockRecommendServiceImpl implements IStockRecommendService
     /** 成交额下限过滤（单位与 stock.turnover_amount 一致），0 表示不过滤 */
     @Value("${stock.recommend.min-turnover-amount:0}")
     private BigDecimal minTurnoverAmount;
+
+    /** 涨停活跃度权重（满分），按「涨停次数 / 板块内最高涨停次数」占比给分 */
+    @Value("${stock.recommend.limitup-weight:30}")
+    private int limitUpWeight;
 
     @Override
     public void executeFocusPlateRecommend()
@@ -139,6 +147,19 @@ public class StockRecommendServiceImpl implements IStockRecommendService
             }
         }
 
+        // 批量获取近1年（不含最近7天）涨停次数，作为打分权重指标
+        Map<String, Integer> limitUpCountMap = stockLimitUpStatService.getLimitUpCountMap(codes);
+
+        // 取板块内最高涨停次数作为分母，涨停次数按占比折算权重分
+        int maxLimitUpCount = 0;
+        for (Integer c : limitUpCountMap.values())
+        {
+            if (c != null && c > maxLimitUpCount)
+            {
+                maxLimitUpCount = c;
+            }
+        }
+
         // 4. 逐股打分（指标缺失或流动性不足的股票跳过）
         List<ScoredStock> scored = new ArrayList<>();
         int liquidityFiltered = 0;
@@ -156,7 +177,8 @@ public class StockRecommendServiceImpl implements IStockRecommendService
                 liquidityFiltered++;
                 continue;
             }
-            scored.add(new ScoredStock(s.getId(), s.getStockCode(), s.getStockName(), scoreEntry(s, ind)));
+            scored.add(new ScoredStock(s.getId(), s.getStockCode(), s.getStockName(),
+                    scoreEntry(s, ind, limitUpCountMap, maxLimitUpCount)));
         }
 
         if (liquidityFiltered > 0)
@@ -193,11 +215,12 @@ public class StockRecommendServiceImpl implements IStockRecommendService
     }
 
     /**
-     * 强势趋势中继打分（满分 100）
+     * 强势趋势中继打分（满分 130）
      * 因子：趋势多头排列(20) + MACD多头(15) + RSI健康(15) + 资金热度·换手率(20)
-     *       + 量能·量比(15) + 趋势斜率向上(15)
+     *       + 量能·量比(15) + 趋势斜率向上(15) + 涨停活跃度(30)
      */
-    private int scoreEntry(Stock stock, StockIndicator ind)
+    private int scoreEntry(Stock stock, StockIndicator ind, Map<String, Integer> limitUpCountMap,
+                           int maxLimitUpCount)
     {
         int score = 0;
 
@@ -285,6 +308,17 @@ public class StockRecommendServiceImpl implements IStockRecommendService
         if (ind.getTrendSlope() != null && ind.getTrendSlope().compareTo(BigDecimal.ZERO) > 0)
         {
             score += 15;
+        }
+
+        // 7. 涨停活跃度（30）：以板块内最高涨停次数为分母，按占比折算权重分
+        //    涨停次数 / 最高涨停次数 * 权重，避免固定阈值过于武断
+        if (maxLimitUpCount > 0)
+        {
+            Integer limitUpCount = limitUpCountMap.get(stock.getStockCode());
+            if (limitUpCount != null && limitUpCount > 0)
+            {
+                score += (int) Math.round((double) limitUpCount * limitUpWeight / maxLimitUpCount);
+            }
         }
 
         return score;

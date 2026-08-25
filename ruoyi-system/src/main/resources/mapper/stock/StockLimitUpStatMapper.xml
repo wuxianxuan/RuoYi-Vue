@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.StockLimitUpStatMapper">
+
+    <resultMap type="StockLimitUpStat" id="StockLimitUpStatResult">
+        <id property="id" column="id"/>
+        <result property="stockCode" column="stock_code"/>
+        <result property="stockName" column="stock_name"/>
+        <result property="limitUpCount" column="limit_up_count"/>
+        <result property="statDate" column="stat_date"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <delete id="deleteAll">
+        delete from stock_limit_up_stat
+    </delete>
+
+    <insert id="insertStats">
+        insert into stock_limit_up_stat
+            (stock_code, stock_name, limit_up_count, stat_date, create_by, create_time, update_by, update_time)
+        select
+            secu_code,
+            max(secu_name),
+            count(distinct trade_date),
+            curdate(),
+            'system',
+            sysdate(),
+            'system',
+            sysdate()
+        from stock_limit_up_record
+        where trade_date &gt;= #{startDate}
+          and trade_date &lt;= #{endDate}
+        group by secu_code
+    </insert>
+
+    <select id="selectByCodes" resultMap="StockLimitUpStatResult">
+        select * from stock_limit_up_stat
+        where stock_code in
+        <foreach collection="codes" item="code" open="(" separator="," close=")">
+            #{code}
+        </foreach>
+    </select>
+
+</mapper>
