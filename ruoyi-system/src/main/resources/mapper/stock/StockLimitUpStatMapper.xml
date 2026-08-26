@@ -21,22 +21,24 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         delete from stock_limit_up_stat
     </delete>
 
-    <insert id="insertStats">
-        insert into stock_limit_up_stat
-            (stock_code, stock_name, limit_up_count, stat_date, create_by, create_time, update_by, update_time)
+    <select id="selectAggregatedByRange" resultMap="StockLimitUpStatResult">
         select
-            secu_code,
-            max(secu_name),
-            count(distinct trade_date),
-            curdate(),
-            'system',
-            sysdate(),
-            'system',
-            sysdate()
+            secu_code as stock_code,
+            max(secu_name) as stock_name,
+            count(distinct trade_date) as limit_up_count
         from stock_limit_up_record
         where trade_date &gt;= #{startDate}
           and trade_date &lt;= #{endDate}
         group by secu_code
+    </select>
+
+    <insert id="batchInsert">
+        insert into stock_limit_up_stat
+            (stock_code, stock_name, limit_up_count, stat_date, create_by, create_time, update_by, update_time)
+        values
+        <foreach collection="list" item="item" separator=",">
+            (#{item.stockCode}, #{item.stockName}, #{item.limitUpCount}, curdate(), 'system', sysdate(), 'system', sysdate())
+        </foreach>
     </insert>
 
     <select id="selectByCodes" resultMap="StockLimitUpStatResult">

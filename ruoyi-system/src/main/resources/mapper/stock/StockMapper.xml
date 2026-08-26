@@ -21,6 +21,7 @@
         <result property="amplitude"       column="amplitude"          />
         <result property="turnoverAmount"  column="turnover_amount"    />
         <result property="circulatingShares" column="circulating_shares" />
+        <result property="limitUpCount" column="limit_up_count" />
         <result property="createBy"    column="create_by"    />
         <result property="createTime"    column="create_time"    />
         <result property="updateBy"    column="update_by"    />
@@ -44,8 +45,10 @@
         s.current_price, s.change_rate, s.price_change,
         s.turnover_rate, s.volume_ratio, s.amplitude,
         s.turnover_amount, s.circulating_shares,
-        s.create_by, s.create_time, s.update_by, s.update_time, s.remark
+        s.create_by, s.create_time, s.update_by, s.update_time, s.remark,
+        ifnull(ls.limit_up_count, 0) as limit_up_count
         from stock s
+        left join stock_limit_up_stat ls on ls.stock_code = s.stock_code
         <where>
             <if test="stockCode != null  and stockCode != ''"> and s.stock_code = #{stockCode}</if>
             <if test="stockName != null  and stockName != ''"> and s.stock_name like concat('%', #{stockName}, '%')</if>
@@ -86,7 +89,11 @@
                     </foreach>
                 )
             </if>
+            <if test="minLimitUpCount != null">
+                and ifnull(ls.limit_up_count, 0) &gt;= #{minLimitUpCount}
+            </if>
         </where>
+        order by ifnull(ls.limit_up_count, 0) desc, s.stock_code asc
     </select>
 
     <select id="selectStockById" parameterType="Long" resultMap="StockResult">
@@ -141,7 +148,7 @@
     </insert>
     <insert id="batchInsertListIgnoreSame" parameterType="java.util.List">
         insert into stock (
-        stock_code, stock_name, market, industry_name,
+        stock_code, stock_name, market,
         pe_ratio, total_market_cap, circ_market_cap,
         current_price, change_rate, price_change,
         turnover_rate, volume_ratio, amplitude,
@@ -149,7 +156,7 @@
         create_by, create_time, update_by, update_time, remark
         ) values
         <foreach collection="list" item="item" separator=",">
-            (#{item.stockCode}, #{item.stockName}, #{item.market}, #{item.industryName},
+            (#{item.stockCode}, #{item.stockName}, #{item.market},
              #{item.peRatio}, #{item.totalMarketCap}, #{item.circMarketCap},
              #{item.currentPrice}, #{item.changeRate}, #{item.priceChange},
              #{item.turnoverRate}, #{item.volumeRatio}, #{item.amplitude},
@@ -159,7 +166,6 @@
         on duplicate key update
         stock_name = values(stock_name),
         market = values(market),
-        industry_name = values(industry_name),
         pe_ratio = values(pe_ratio),
         total_market_cap = values(total_market_cap),
         circ_market_cap = values(circ_market_cap),
