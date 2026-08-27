@@ -23,8 +23,8 @@ import java.util.stream.Collectors;
 /**
  * 股票推荐引擎实现
  *
- * 基于「重点关注」板块（focus_flag=1），对每个板块下属股票按
- * 「强势趋势中继」多因子打分，取 Top N 只值得入场的股票生成分组。
+ * 基于「重点关注」板块（focus_flag=1），对每个板块下属股票先按涨停数
+ * 降序筛出候选（涨停数 >= 阈值 取前 N），再按「强势趋势中继」多因子打分取 Top N。
  */
 @Service
 public class StockRecommendServiceImpl implements IStockRecommendService
@@ -43,9 +43,17 @@ public class StockRecommendServiceImpl implements IStockRecommendService
     @Autowired
     private IStockLimitUpStatService stockLimitUpStatService;
 
-    /** 每个重点板块取几只股票 */
-    @Value("${stock.recommend.top-stocks:10}")
+    /** 每个重点板块最终取几只股票 */
+    @Value("${stock.recommend.top-stocks:12}")
     private int topStocks;
+
+    /** 涨停数下限：仅保留涨停数 >= 该值的股票 */
+    @Value("${stock.recommend.limitup-threshold:5}")
+    private int limitUpThreshold;
+
+    /** 按涨停数降序截取的前 N 只候选股票 */
+    @Value("${stock.recommend.limitup-top-n:50}")
+    private int limitUpTopN;
 
     /** 生成分组名前缀 */
     @Value("${stock.recommend.group-prefix:入场}")
@@ -70,10 +78,6 @@ public class StockRecommendServiceImpl implements IStockRecommendService
     /** 成交额下限过滤（单位与 stock.turnover_amount 一致），0 表示不过滤 */
     @Value("${stock.recommend.min-turnover-amount:0}")
     private BigDecimal minTurnoverAmount;
-
-    /** 涨停活跃度权重（满分），按「涨停次数 / 板块内最高涨停次数」占比给分 */
-    @Value("${stock.recommend.limitup-weight:30}")
-    private int limitUpWeight;
 
     @Override
     public void executeFocusPlateRecommend()
@@ -127,43 +131,49 @@ public class StockRecommendServiceImpl implements IStockRecommendService
             return 0;
         }
 
-        // 3. 批量获取最新技术指标
+        // 3. 获取近1年（不含最近7天）涨停次数，按涨停数降序筛出候选股票
         List<String> codes = stocks.stream()
                 .map(Stock::getStockCode)
                 .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
-
-        Map<String, StockIndicator> indicatorMap = new HashMap<>();
-        if (!codes.isEmpty())
-        {
-            List<StockIndicator> indicators = stockIndicatorMapper.selectLatestByStockCodes(codes, "D");
-            if (indicators != null)
-            {
-                for (StockIndicator ind : indicators)
-                {
-                    indicatorMap.put(ind.getStockCode(), ind);
-                }
-            }
-        }
-
-        // 批量获取近1年（不含最近7天）涨停次数，作为打分权重指标
         Map<String, Integer> limitUpCountMap = stockLimitUpStatService.getLimitUpCountMap(codes);
 
-        // 取板块内最高涨停次数作为分母，涨停次数按占比折算权重分
-        int maxLimitUpCount = 0;
-        for (Integer c : limitUpCountMap.values())
+        List<Stock> candidates = stocks.stream()
+                .filter(s -> {
+                    Integer c = limitUpCountMap.get(s.getStockCode());
+                    return c != null && c >= limitUpThreshold;
+                })
+                .sorted(Comparator.comparingInt((Stock s) ->
+                        limitUpCountMap.getOrDefault(s.getStockCode(), 0)).reversed())
+                .limit(limitUpTopN)
+                .collect(Collectors.toList());
+
+        if (candidates.isEmpty())
         {
-            if (c != null && c > maxLimitUpCount)
+            log.warn("板块 [{}] 无涨停数 >= {} 的股票，跳过", plate.getPlateName(), limitUpThreshold);
+            return 0;
+        }
+        log.info("板块 [{}] 涨停数 >= {} 的候选股票 {} 只", plate.getPlateName(), limitUpThreshold, candidates.size());
+
+        // 4. 批量获取候选股票最新技术指标
+        List<String> candidateCodes = candidates.stream()
+                .map(Stock::getStockCode)
+                .collect(Collectors.toList());
+        Map<String, StockIndicator> indicatorMap = new HashMap<>();
+        List<StockIndicator> indicators = stockIndicatorMapper.selectLatestByStockCodes(candidateCodes, "D");
+        if (indicators != null)
+        {
+            for (StockIndicator ind : indicators)
             {
-                maxLimitUpCount = c;
+                indicatorMap.put(ind.getStockCode(), ind);
             }
         }
 
-        // 4. 逐股打分（指标缺失或流动性不足的股票跳过）
+        // 5. 逐股按算法指标打分（指标缺失或流动性不足的股票跳过）
         List<ScoredStock> scored = new ArrayList<>();
         int liquidityFiltered = 0;
-        for (Stock s : stocks)
+        for (Stock s : candidates)
         {
             StockIndicator ind = indicatorMap.get(s.getStockCode());
             if (ind == null)
@@ -177,8 +187,7 @@ public class StockRecommendServiceImpl implements IStockRecommendService
                 liquidityFiltered++;
                 continue;
             }
-            scored.add(new ScoredStock(s.getId(), s.getStockCode(), s.getStockName(),
-                    scoreEntry(s, ind, limitUpCountMap, maxLimitUpCount)));
+            scored.add(new ScoredStock(s.getId(), s.getStockCode(), s.getStockName(), scoreEntry(s, ind)));
         }
 
         if (liquidityFiltered > 0)
@@ -192,12 +201,12 @@ public class StockRecommendServiceImpl implements IStockRecommendService
             return 0;
         }
 
-        // 5. 按得分降序取 Top N
+        // 6. 按算法得分降序取 Top N
         scored.sort(Comparator.comparingInt(ScoredStock::getScore).reversed());
         int topN = Math.min(topStocks, scored.size());
         List<ScoredStock> top = scored.subList(0, topN);
 
-        // 6. 生成分组
+        // 7. 生成分组
         String groupName = groupPrefix + "_" + dateStr + "_" + plate.getPlateName();
         StockGroup group = new StockGroup();
         group.setGroupName(groupName);
@@ -215,12 +224,11 @@ public class StockRecommendServiceImpl implements IStockRecommendService
     }
 
     /**
-     * 强势趋势中继打分（满分 130）
+     * 强势趋势中继打分（满分 100）
      * 因子：趋势多头排列(20) + MACD多头(15) + RSI健康(15) + 资金热度·换手率(20)
-     *       + 量能·量比(15) + 趋势斜率向上(15) + 涨停活跃度(30)
+     *       + 量能·量比(15) + 趋势斜率向上(15)
      */
-    private int scoreEntry(Stock stock, StockIndicator ind, Map<String, Integer> limitUpCountMap,
-                           int maxLimitUpCount)
+    private int scoreEntry(Stock stock, StockIndicator ind)
     {
         int score = 0;
 
@@ -308,17 +316,6 @@ public class StockRecommendServiceImpl implements IStockRecommendService
         if (ind.getTrendSlope() != null && ind.getTrendSlope().compareTo(BigDecimal.ZERO) > 0)
         {
             score += 15;
-        }
-
-        // 7. 涨停活跃度（30）：以板块内最高涨停次数为分母，按占比折算权重分
-        //    涨停次数 / 最高涨停次数 * 权重，避免固定阈值过于武断
-        if (maxLimitUpCount > 0)
-        {
-            Integer limitUpCount = limitUpCountMap.get(stock.getStockCode());
-            if (limitUpCount != null && limitUpCount > 0)
-            {
-                score += (int) Math.round((double) limitUpCount * limitUpWeight / maxLimitUpCount);
-            }
         }
 
         return score;

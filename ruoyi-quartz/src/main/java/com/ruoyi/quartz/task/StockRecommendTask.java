@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
  * 股票推荐定时任务
  *
  * 遍历 focus_flag=1 的重点关注板块（行业+概念），对每个板块下属股票按
- * 「强势趋势中继」打分，取 Top N 只值得入场的股票生成分组。
+ * 涨停数降序筛出候选（涨停数 >= 阈值 取前 N），再按「强势趋势中继」打分取 Top N 生成分组。
  * 建议执行时间：每日16:00（收盘后），依赖 K线同步(stockKlineSyncTask)与
  * 指标计算(stockIndicatorCalcTask)已完成。
  */
