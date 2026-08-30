@@ -39,8 +39,8 @@ public class StockIndicatorCalcTask
     @Autowired
     private IStockIndicatorService stockIndicatorService;
 
-    /** K线回溯天数（多取20天buffer确保MA60有足够数据） */
-    private static final int KLINES_LOOKBACK = 80;
+    /** K线回溯日历天数（覆盖约 100+ 交易日，确保 MA60/MA34 有足够数据） */
+    private static final int KLINES_LOOKBACK = 150;
 
     /** 每批持久化的记录数 */
     private static final int BATCH_SIZE = 500;

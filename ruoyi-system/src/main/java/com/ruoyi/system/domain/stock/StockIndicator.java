@@ -35,6 +35,12 @@ public class StockIndicator
     /** 60日均线 */
     private BigDecimal ma60;
 
+    /** 30日均线 */
+    private BigDecimal ma30;
+
+    /** 34日均线 */
+    private BigDecimal ma34;
+
     /** MACD DIF */
     private BigDecimal macdDif;
 
@@ -55,4 +61,16 @@ public class StockIndicator
 
     /** 趋势斜率（线性回归） */
     private BigDecimal trendSlope;
+
+    /** KDJ K值 */
+    private BigDecimal kdjK;
+
+    /** KDJ D值 */
+    private BigDecimal kdjD;
+
+    /** KDJ J值 */
+    private BigDecimal kdjJ;
+
+    /** CCI（14日） */
+    private BigDecimal cci;
 }

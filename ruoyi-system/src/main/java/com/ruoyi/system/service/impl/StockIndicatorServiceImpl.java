@@ -17,7 +17,7 @@ import java.util.List;
 /**
  * 技术指标计算服务
  *
- * 指标列表：MA5/10/20/60, MACD(12/26/9), RSI6/14, 量比, 趋势斜率
+ * 指标列表：MA5/10/20/30/34/60, MACD(12/26/9), RSI6/14, KDJ(9,3,3), CCI(14), 量比, 趋势斜率
  * 所有计算使用 BigDecimal + HALF_UP，scale=8
  */
 @Service
@@ -43,7 +43,12 @@ public class StockIndicatorServiceImpl implements IStockIndicatorService
     // 量比参数
     private static final int VOL_MA_PERIOD = 5;
 
+    // KDJ / CCI 参数
+    private static final int KDJ_PERIOD = 9;
+    private static final int CCI_PERIOD = 14;
+
     private static final BigDecimal TWO = BigDecimal.valueOf(2);
+    private static final BigDecimal THREE = BigDecimal.valueOf(3);
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
     @Override
@@ -57,12 +62,16 @@ public class StockIndicatorServiceImpl implements IStockIndicatorService
         int n = klines.size();
         List<StockIndicator> results = new ArrayList<>(n);
 
-        // 提取 close 价格和成交量列表
+        // 提取 OHLC 价格和成交量列表
         List<BigDecimal> closes = new ArrayList<>(n);
+        List<BigDecimal> highs = new ArrayList<>(n);
+        List<BigDecimal> lows = new ArrayList<>(n);
         List<Long> volumes = new ArrayList<>(n);
         for (StockKline k : klines)
         {
             closes.add(k.getClosePrice());
+            highs.add(k.getHighPrice());
+            lows.add(k.getLowPrice());
             volumes.add(k.getVolume() != null ? k.getVolume() : 0L);
         }
 
@@ -70,6 +79,8 @@ public class StockIndicatorServiceImpl implements IStockIndicatorService
         BigDecimal[] sma5 = calcSMA(closes, 5);
         BigDecimal[] sma10 = calcSMA(closes, 10);
         BigDecimal[] sma20 = calcSMA(closes, 20);
+        BigDecimal[] sma30 = calcSMA(closes, 30);
+        BigDecimal[] sma34 = calcSMA(closes, 34);
         BigDecimal[] sma60 = calcSMA(closes, 60);
 
         // ==================== 计算 MACD ====================
@@ -88,6 +99,13 @@ public class StockIndicatorServiceImpl implements IStockIndicatorService
         // ==================== 计算趋势斜率 ====================
         BigDecimal[] slopeArr = calcTrendSlope(closes);
 
+        // ==================== 计算 KDJ / CCI ====================
+        BigDecimal[][] kdjResult = calcKDJ(highs, lows, closes);
+        BigDecimal[] kdjKArr = kdjResult[0];
+        BigDecimal[] kdjDArr = kdjResult[1];
+        BigDecimal[] kdjJArr = kdjResult[2];
+        BigDecimal[] cciArr = calcCCI(highs, lows, closes);
+
         // ==================== 组装结果 ====================
         for (int i = 0; i < n; i++)
         {
@@ -99,6 +117,8 @@ public class StockIndicatorServiceImpl implements IStockIndicatorService
             indicator.setMa5(sma5[i]);
             indicator.setMa10(sma10[i]);
             indicator.setMa20(sma20[i]);
+            indicator.setMa30(sma30[i]);
+            indicator.setMa34(sma34[i]);
             indicator.setMa60(sma60[i]);
             indicator.setMacdDif(macdDifArr[i]);
             indicator.setMacdDea(macdDeaArr[i]);
@@ -107,6 +127,10 @@ public class StockIndicatorServiceImpl implements IStockIndicatorService
             indicator.setRsi14(rsi14Arr[i]);
             indicator.setVolRatio(volRatioArr[i]);
             indicator.setTrendSlope(slopeArr[i]);
+            indicator.setKdjK(kdjKArr[i]);
+            indicator.setKdjD(kdjDArr[i]);
+            indicator.setKdjJ(kdjJArr[i]);
+            indicator.setCci(cciArr[i]);
             results.add(indicator);
         }
 
@@ -365,6 +389,115 @@ public class StockIndicatorServiceImpl implements IStockIndicatorService
             result[n - 1] = slope;
         }
 
+        return result;
+    }
+
+    /**
+     * KDJ(9,3,3)
+     *
+     * RSV = (C - L9) / (H9 - L9) * 100
+     * K = 2/3 * K_prev + 1/3 * RSV（首值 50）
+     * D = 2/3 * D_prev + 1/3 * K（首值 50）
+     * J = 3K - 2D
+     *
+     * @return [K数组, D数组, J数组]
+     */
+    private BigDecimal[][] calcKDJ(List<BigDecimal> highs, List<BigDecimal> lows, List<BigDecimal> closes)
+    {
+        int n = closes.size();
+        BigDecimal[] kArr = new BigDecimal[n];
+        BigDecimal[] dArr = new BigDecimal[n];
+        BigDecimal[] jArr = new BigDecimal[n];
+
+        BigDecimal prevK = BigDecimal.valueOf(50);
+        BigDecimal prevD = BigDecimal.valueOf(50);
+        BigDecimal fifty = BigDecimal.valueOf(50);
+
+        for (int i = 0; i < n; i++)
+        {
+            // 滚动最高/最低（近 KDJ_PERIOD 日）
+            BigDecimal hh = highs.get(i);
+            BigDecimal ll = lows.get(i);
+            for (int t = Math.max(0, i - KDJ_PERIOD + 1); t <= i; t++)
+            {
+                if (highs.get(t).compareTo(hh) > 0) hh = highs.get(t);
+                if (lows.get(t).compareTo(ll) < 0) ll = lows.get(t);
+            }
+
+            BigDecimal rsv;
+            if (hh.compareTo(ll) == 0)
+            {
+                rsv = fifty;
+            }
+            else
+            {
+                rsv = closes.get(i).subtract(ll).multiply(HUNDRED)
+                        .divide(hh.subtract(ll), SCALE, RM);
+            }
+
+            BigDecimal k = prevK.multiply(TWO).divide(THREE, SCALE, RM)
+                    .add(rsv.divide(THREE, SCALE, RM));
+            BigDecimal d = prevD.multiply(TWO).divide(THREE, SCALE, RM)
+                    .add(k.divide(THREE, SCALE, RM));
+
+            kArr[i] = k;
+            dArr[i] = d;
+            jArr[i] = k.multiply(THREE).subtract(d.multiply(TWO));
+
+            prevK = k;
+            prevD = d;
+        }
+        return new BigDecimal[][]{ kArr, dArr, jArr };
+    }
+
+    /**
+     * CCI(14)
+     *
+     * TP = (H + L + C) / 3
+     * CCI = (TP - MA(TP,14)) / (0.015 * MD)，MD 为 TP 与 MA 的平均绝对偏差
+     */
+    private BigDecimal[] calcCCI(List<BigDecimal> highs, List<BigDecimal> lows, List<BigDecimal> closes)
+    {
+        int n = closes.size();
+        BigDecimal[] result = new BigDecimal[n];
+        if (n < CCI_PERIOD)
+        {
+            return result;
+        }
+
+        BigDecimal[] tp = new BigDecimal[n];
+        for (int i = 0; i < n; i++)
+        {
+            tp[i] = highs.get(i).add(lows.get(i)).add(closes.get(i))
+                    .divide(THREE, SCALE, RM);
+        }
+
+        BigDecimal divisor = BigDecimal.valueOf(0.015);
+        for (int i = CCI_PERIOD - 1; i < n; i++)
+        {
+            BigDecimal sum = BigDecimal.ZERO;
+            for (int t = i - CCI_PERIOD + 1; t <= i; t++)
+            {
+                sum = sum.add(tp[t]);
+            }
+            BigDecimal mavg = sum.divide(BigDecimal.valueOf(CCI_PERIOD), SCALE, RM);
+
+            BigDecimal md = BigDecimal.ZERO;
+            for (int t = i - CCI_PERIOD + 1; t <= i; t++)
+            {
+                md = md.add(tp[t].subtract(mavg).abs());
+            }
+            md = md.divide(BigDecimal.valueOf(CCI_PERIOD), SCALE, RM);
+
+            if (md.compareTo(BigDecimal.ZERO) == 0)
+            {
+                result[i] = BigDecimal.ZERO;
+            }
+            else
+            {
+                result[i] = tp[i].subtract(mavg).divide(md.multiply(divisor), SCALE, RM);
+            }
+        }
         return result;
     }
 }

@@ -167,6 +167,12 @@ stock:
   # 财联社数据源
   cls:
     sign: 6dfce97fbf19527e4957cca0127feafd
+  # 龙头股七大战法推荐引擎配置
+  leader-strategy:
+    # 每个战法分组最多取几只股票
+    top-stocks: 10
+    # K线回看日历天数（覆盖约 100+ 交易日，满足 MA60 / 66日新低 / 40日窗口）
+    lookback-days: 150
   # 分析结果输出目录
   analysis:
     output-dir: ./data
