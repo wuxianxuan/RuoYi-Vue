@@ -153,6 +153,11 @@ stock:
     quote:
       # 抓取结果 JSON 文件路径（由 stock-tools/fetchers/ths-quote.js 生成）
       data-file: ../stock-tools/data/ths_quotes.json
+    funds:
+      # 概念资金流向 JSON 文件路径
+      concept-file: ../stock-tools/data/ths_funds_concept.json
+      # 行业资金流向 JSON 文件路径
+      industry-file: ../stock-tools/data/ths_funds_industry.json
   # 同花顺板块排名
   blockrank:
     origin: https://m.10jqka.com.cn

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.StockFundFlowMapper">
+
+    <resultMap type="StockFundFlow" id="StockFundFlowResult">
+        <result property="id"        column="id"         />
+        <result property="plateType" column="plate_type" />
+        <result property="tradeDate" column="trade_date" />
+        <result property="tradeName" column="trade_name" />
+        <result property="code"      column="code"       />
+        <result property="price"     column="price"      />
+        <result property="tradeZdf"  column="trade_zdf"  />
+        <result property="buy"       column="buy"        />
+        <result property="sell"      column="sell"       />
+        <result property="je"        column="je"         />
+        <result property="total"     column="total"      />
+    </resultMap>
+
+    <insert id="batchInsertIgnore" parameterType="java.util.List">
+        insert ignore into stock_fund_flow (
+            plate_type, trade_date, trade_name, code,
+            price, trade_zdf, buy, sell, je, total
+        ) values
+        <foreach collection="list" item="item" separator=",">
+            (#{item.plateType}, #{item.tradeDate}, #{item.tradeName}, #{item.code},
+             #{item.price}, #{item.tradeZdf}, #{item.buy}, #{item.sell}, #{item.je}, #{item.total})
+        </foreach>
+    </insert>
+
+</mapper>

@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ruoyi.system.domain.stock.Stock;
 import com.ruoyi.system.domain.stock.StockDailyQuote;
+import com.ruoyi.system.domain.stock.StockFundFlow;
 import com.ruoyi.system.mapper.StockDailyQuoteMapper;
+import com.ruoyi.system.mapper.StockFundFlowMapper;
 import com.ruoyi.system.mapper.StockMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,8 +57,17 @@ public class StockQuoteSyncTask
     @Autowired
     private StockDailyQuoteMapper stockDailyQuoteMapper;
 
+    @Autowired
+    private StockFundFlowMapper stockFundFlowMapper;
+
     @Value("${stock.ths.quote.data-file:../stock-tools/data/ths_quotes.json}")
     private String dataFilePath;
+
+    @Value("${stock.ths.funds.concept-file:../stock-tools/data/ths_funds_concept.json}")
+    private String fundFlowConceptFile;
+
+    @Value("${stock.ths.funds.industry-file:../stock-tools/data/ths_funds_industry.json}")
+    private String fundFlowIndustryFile;
 
     // ==================== 入口 ====================
 
@@ -133,6 +144,106 @@ public class StockQuoteSyncTask
         catch (Exception e)
         {
             log.error("同步失败: {}", e.getMessage(), e);
+        }
+
+        // 行情处理完成后，额外同步行业/概念资金流向
+        syncFundFlow();
+    }
+
+    // ==================== 资金流向同步 ====================
+
+    /**
+     * 同步行业/概念资金流向（ths_funds_concept.json / ths_funds_industry.json）
+     * 写入 stock_fund_flow 表，按 (plate_type, code, trade_date) INSERT IGNORE 保留全部历史。
+     */
+    private void syncFundFlow()
+    {
+        log.info("========== 开始同步行业/概念资金流向 ==========");
+        syncFundFlowFile(fundFlowConceptFile, "CONCEPT");
+        syncFundFlowFile(fundFlowIndustryFile, "INDUSTRY");
+        log.info("========== 资金流向同步结束 ==========");
+    }
+
+    private void syncFundFlowFile(String filePath, String plateType)
+    {
+        try
+        {
+            File file = new File(filePath);
+            if (!file.exists())
+            {
+                log.warn("资金流向数据文件不存在，跳过: {}", file.getAbsolutePath());
+                return;
+            }
+
+            JsonNode root = objectMapper.readTree(file);
+            JsonNode dataNode = root.get("data");
+            if (dataNode == null || !dataNode.isArray() || dataNode.size() == 0)
+            {
+                log.warn("资金流向 JSON 文件中无数据: {}", filePath);
+                return;
+            }
+
+            String fetchTime = root.has("fetchTime") ? root.get("fetchTime").asText() : "";
+            LocalDate tradeDate = parseTradeDate(fetchTime);
+            log.info("资金流向[{}] 交易日期: {}, 总条数: {}", plateType, tradeDate, dataNode.size());
+
+            List<StockFundFlow> batch = new ArrayList<>();
+            for (JsonNode item : dataNode)
+            {
+                StockFundFlow flow = buildFundFlow(item, plateType, tradeDate);
+                if (flow.getCode() == null)
+                {
+                    log.trace("跳过无效资金流向数据: {}", item);
+                    continue;
+                }
+                batch.add(flow);
+                if (batch.size() >= DB_BATCH_SIZE)
+                {
+                    flushFundFlowBatch(batch);
+                }
+            }
+            if (!batch.isEmpty())
+            {
+                flushFundFlowBatch(batch);
+            }
+            log.info("资金流向[{}] 已保存 (date={})", plateType, tradeDate);
+        }
+        catch (Exception e)
+        {
+            log.error("资金流向[{}] 同步失败: {}", plateType, e.getMessage(), e);
+        }
+    }
+
+    /** 构建资金流向实体（行业/概念通用） */
+    private StockFundFlow buildFundFlow(JsonNode item, String plateType, LocalDate tradeDate)
+    {
+        StockFundFlow flow = new StockFundFlow();
+        flow.setPlateType(plateType);
+        flow.setTradeDate(tradeDate == null ? null : Date.valueOf(tradeDate));
+        flow.setTradeName(getString(item, "tradename"));
+        flow.setCode(getString(item, "code"));
+        flow.setPrice(getDecimal(item, "price"));
+        flow.setTradeZdf(getPercent(item, "tradezdf"));
+        flow.setBuy(getDecimal(item, "buy"));
+        flow.setSell(getDecimal(item, "sell"));
+        flow.setJe(getDecimal(item, "je"));
+        flow.setTotal(getInteger(item, "total"));
+        return flow;
+    }
+
+    private void flushFundFlowBatch(List<StockFundFlow> batch)
+    {
+        if (batch.isEmpty()) return;
+        try
+        {
+            stockFundFlowMapper.batchInsertIgnore(batch);
+            log.debug("stock_fund_flow 写入: {} 条", batch.size());
+            batch.clear();
+        }
+        catch (Exception e)
+        {
+            log.error("stock_fund_flow 写入失败 ({} 条): {}", batch.size(), e.getMessage());
+            if (batch.size() > DB_BATCH_SIZE * 3) batch.clear();
         }
     }
 
@@ -276,6 +387,53 @@ public class StockQuoteSyncTask
                         text = text.substring(0, text.length() - 1);
                     }
                     return new BigDecimal(text).multiply(multiplier);
+                }
+                catch (NumberFormatException ignored) { }
+            }
+        }
+        return null;
+    }
+
+    /** 解析带 % 后缀的数值（如涨跌幅 "3.06%" → 3.06），无效值返回 null */
+    private BigDecimal getPercent(JsonNode node, String... names)
+    {
+        for (String name : names)
+        {
+            JsonNode field = node.get(name);
+            if (field != null && !field.isNull())
+            {
+                String text = field.asText().trim();
+                if (text.endsWith("%"))
+                {
+                    text = text.substring(0, text.length() - 1);
+                }
+                if (text.isEmpty() || "-".equals(text) || "--".equals(text))
+                {
+                    continue;
+                }
+                try
+                {
+                    return new BigDecimal(text);
+                }
+                catch (NumberFormatException ignored) { }
+            }
+        }
+        return null;
+    }
+
+    /** 解析整数值（如公司家数 "15" → 15），无效值返回 null */
+    private Integer getInteger(JsonNode node, String... names)
+    {
+        for (String name : names)
+        {
+            JsonNode field = node.get(name);
+            if (field != null && !field.isNull())
+            {
+                String text = field.asText().trim();
+                if (text.isEmpty()) continue;
+                try
+                {
+                    return Integer.valueOf(text);
                 }
                 catch (NumberFormatException ignored) { }
             }
