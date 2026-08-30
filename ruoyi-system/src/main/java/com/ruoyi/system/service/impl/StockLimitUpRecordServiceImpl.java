@@ -16,6 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
+import java.sql.Date;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -130,8 +133,8 @@ public class StockLimitUpRecordServiceImpl implements IStockLimitUpRecordService
                 }
 
                 StockLimitUpRecord record = new StockLimitUpRecord();
-                record.setTradeDate(date);
-                record.setSecuCode(stockInfo.getSecu_code());
+                record.setTradeDate(parseTradeDate(date));
+                record.setSecuCode(normalizeSecuCode(stockInfo.getSecu_code()));
                 record.setSecuName(stockInfo.getSecu_name());
                 record.setChangeRate(stockInfo.getChange());
                 record.setLastPx(stockInfo.getLast_px());
@@ -159,5 +162,25 @@ public class StockLimitUpRecordServiceImpl implements IStockLimitUpRecordService
             batchSaveStockLimitUpRecords(records);
         }
         return records.size();
+    }
+
+    /** 解析 yyyyMMdd 字符串为 java.sql.Date（stock_limit_up_record.trade_date 为 date 类型） */
+    private Date parseTradeDate(String yyyyMMdd) {
+        return Date.valueOf(LocalDate.parse(yyyyMMdd, DateTimeFormatter.ofPattern("yyyyMMdd")));
+    }
+
+    /** 归一化财联社证券代码：去 sh/sz 前缀、.BJ 后缀，落库前统一为纯代码以匹配 stock.stock_code */
+    private String normalizeSecuCode(String secuCode) {
+        if (secuCode == null || secuCode.isEmpty()) {
+            return secuCode;
+        }
+        String lower = secuCode.toLowerCase();
+        if (secuCode.length() > 2 && (lower.startsWith("sh") || lower.startsWith("sz"))) {
+            return secuCode.substring(2);
+        }
+        if (secuCode.length() > 3 && secuCode.toUpperCase().endsWith(".BJ")) {
+            return secuCode.substring(0, secuCode.length() - 3);
+        }
+        return secuCode;
     }
 }

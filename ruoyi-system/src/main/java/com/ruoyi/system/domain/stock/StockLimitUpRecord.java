@@ -1,11 +1,13 @@
 package com.ruoyi.system.domain.stock;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.ruoyi.common.annotation.Excel;
 import com.ruoyi.common.core.domain.BaseEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.math.BigDecimal;
+import java.util.Date;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -13,7 +15,8 @@ public class StockLimitUpRecord extends BaseEntity {
     private Long id;
 
     @Excel(name = "交易日期")
-    private String tradeDate;
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private Date tradeDate;
 
     @Excel(name = "证券代码")
     private String secuCode;

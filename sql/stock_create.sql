@@ -44,7 +44,6 @@ CREATE TABLE `stock_daily_quote` (
                                      `circulating_shares` decimal(18,4) DEFAULT NULL COMMENT '流通股',
                                      `circ_market_cap` decimal(18,4) DEFAULT NULL COMMENT '流通市值',
                                      `pe_ratio` decimal(18,4) DEFAULT NULL COMMENT '市盈率',
-                                     `total_market_cap` decimal(18,4) DEFAULT NULL COMMENT '总市值',
                                      PRIMARY KEY (`id`),
                                      UNIQUE KEY `uk_code_date` (`stock_code`,`trade_date`),
                                      KEY `idx_trade_date` (`trade_date`)
@@ -128,7 +127,7 @@ CREATE TABLE `stock_kline` (
 
 CREATE TABLE `stock_limit_up_record` (
                                          `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-                                         `trade_date` varchar(8) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT '' COMMENT '交易日期(yyyyMMdd)',
+                                         `trade_date` date NOT NULL COMMENT '交易日期',
                                          `secu_code` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT '' COMMENT '证券代码',
                                          `secu_name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT '' COMMENT '证券名称',
                                          `change_rate` decimal(10,4) DEFAULT NULL COMMENT '涨跌幅',

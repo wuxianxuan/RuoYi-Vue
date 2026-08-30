@@ -13,7 +13,7 @@ public interface StockLimitUpStatMapper {
     /** 清空统计表 */
     int deleteAll();
 
-    /** 聚合 [startDate, endDate] 区间内各股票涨停次数（stockCode 为财联社原始 secu_code） */
+    /** 聚合 [startDate, endDate] 区间内各股票涨停次数（secu_code 已在采集阶段归一化为纯代码） */
     List<StockLimitUpStat> selectAggregatedByRange(@Param("startDate") String startDate, @Param("endDate") String endDate);
 
     /** 批量写入统计表 */

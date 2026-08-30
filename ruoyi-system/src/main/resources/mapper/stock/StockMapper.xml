@@ -167,7 +167,7 @@
         stock_name = values(stock_name),
         market = values(market),
         pe_ratio = values(pe_ratio),
-        total_market_cap = values(total_market_cap),
+        total_market_cap = IFNULL(values(total_market_cap), total_market_cap),
         circ_market_cap = values(circ_market_cap),
         current_price = values(current_price),
         change_rate = values(change_rate),

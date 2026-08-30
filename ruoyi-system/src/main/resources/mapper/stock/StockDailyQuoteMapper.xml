@@ -19,7 +19,6 @@
         <result property="circulatingShares" column="circulating_shares" />
         <result property="circMarketCap"    column="circ_market_cap" />
         <result property="peRatio"          column="pe_ratio"        />
-        <result property="totalMarketCap"   column="total_market_cap"/>
     </resultMap>
 
     <insert id="batchInsertIgnore" parameterType="java.util.List">
@@ -28,14 +27,14 @@
             current_price, change_rate, price_change, speed,
             turnover_rate, volume_ratio, amplitude,
             turnover_amount, circulating_shares,
-            circ_market_cap, pe_ratio, total_market_cap
+            circ_market_cap, pe_ratio
         ) values
         <foreach collection="list" item="item" separator=",">
             (#{item.stockCode}, #{item.tradeDate},
              #{item.currentPrice}, #{item.changeRate}, #{item.priceChange}, #{item.speed},
              #{item.turnoverRate}, #{item.volumeRatio}, #{item.amplitude},
              #{item.turnoverAmount}, #{item.circulatingShares},
-             #{item.circMarketCap}, #{item.peRatio}, #{item.totalMarketCap})
+             #{item.circMarketCap}, #{item.peRatio})
         </foreach>
     </insert>
 

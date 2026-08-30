@@ -27,8 +27,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             max(secu_name) as stock_name,
             count(distinct trade_date) as limit_up_count
         from stock_limit_up_record
-        where trade_date &gt;= #{startDate}
-          and trade_date &lt;= #{endDate}
+        where trade_date &gt;= STR_TO_DATE(#{startDate}, '%Y%m%d')
+          and trade_date &lt;= STR_TO_DATE(#{endDate}, '%Y%m%d')
         group by secu_code
     </select>
 

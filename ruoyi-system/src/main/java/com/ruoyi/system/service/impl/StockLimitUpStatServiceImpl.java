@@ -9,7 +9,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,33 +27,11 @@ public class StockLimitUpStatServiceImpl implements IStockLimitUpStatService {
     @Override
     @Transactional
     public void rebuildStats(String startDate, String endDate) {
-        List<StockLimitUpStat> raw = stockLimitUpStatMapper.selectAggregatedByRange(startDate, endDate);
-        List<StockLimitUpStat> stats = new ArrayList<>();
-        if (raw != null) {
-            for (StockLimitUpStat r : raw) {
-                // 财联社 secu_code 带 sh/sz 前缀或 .BJ 后缀，定时任务阶段归一化为纯代码以匹配 stock.stock_code
-                r.setStockCode(normalizeSecuCode(r.getStockCode()));
-                stats.add(r);
-            }
-        }
+        // secu_code 已在采集同步阶段归一化为纯代码，此处直接聚合
+        List<StockLimitUpStat> stats = stockLimitUpStatMapper.selectAggregatedByRange(startDate, endDate);
         int deleted = stockLimitUpStatMapper.deleteAll();
-        int inserted = stats.isEmpty() ? 0 : stockLimitUpStatMapper.batchInsert(stats);
+        int inserted = (stats == null || stats.isEmpty()) ? 0 : stockLimitUpStatMapper.batchInsert(stats);
         log.info("涨停次数统计完成: 删除旧记录 {} 条, 写入 {} 条 (统计区间 {} ~ {})", deleted, inserted, startDate, endDate);
-    }
-
-    /** 归一化财联社证券代码：去 sh/sz 前缀、.BJ 后缀 */
-    private String normalizeSecuCode(String secuCode) {
-        if (secuCode == null || secuCode.isEmpty()) {
-            return secuCode;
-        }
-        String lower = secuCode.toLowerCase();
-        if (secuCode.length() > 2 && (lower.startsWith("sh") || lower.startsWith("sz"))) {
-            return secuCode.substring(2);
-        }
-        if (secuCode.length() > 3 && secuCode.toUpperCase().endsWith(".BJ")) {
-            return secuCode.substring(0, secuCode.length() - 3);
-        }
-        return secuCode;
     }
 
     @Override

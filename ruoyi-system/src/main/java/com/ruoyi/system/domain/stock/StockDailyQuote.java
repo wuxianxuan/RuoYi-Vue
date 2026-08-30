@@ -59,7 +59,4 @@ public class StockDailyQuote
 
     /** 市盈率（PE） */
     private BigDecimal peRatio;
-
-    /** 总市值 */
-    private BigDecimal totalMarketCap;
 }

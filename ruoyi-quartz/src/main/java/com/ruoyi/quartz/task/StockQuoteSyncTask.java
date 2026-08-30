@@ -22,12 +22,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 同花顺个股行情同步定时任务 (v3)
+ * 同花顺个股行情同步定时任务
  *
  * 数据来源：stock-tools Node.js 脚本抓取的 JSON 文件 (../stock-tools/data/ths_quotes.json)
  *
+ * 数据字段（实际抓取格式）：
+ *   code 股票代码 / name 股票名称 / now 现价 / change 涨跌幅% / change_amount 涨跌额 /
+ *   speed 涨速% / turnover 换手率% / vol_ratio 量比 / amplitude 振幅% /
+ *   amount 成交额(带"亿"/"万"单位) / float_share 流通股(带"万"/"亿"单位) /
+ *   circ_mv 流通市值(带"亿"单位) / pe 市盈率("亏损"/"--" 表示无效)
+ *   注意：该数据源不含"总市值(total_market_cap)"字段。
+ *
  * 写入策略（拆分）:
- *   stock 表           → 仅基础信息（stock_code, stock_name, market），batchInsertListIgnoreSame 只插不覆盖已有
+ *   stock 表           → 当前最新快照（现价/涨跌幅/换手率/流通市值等），供列表展示，upsert 覆盖
  *   stock_daily_quote  → 每日行情快照（价格/PE/市值/换手率等），INSERT IGNORE 保留全部历史
  *
  * @author ruoyi
@@ -146,11 +153,11 @@ public class StockQuoteSyncTask
         stock.setTurnoverRate(getDecimal(item, "turnover", "turnover_rate", "turnoverrate", "hsl", "turn"));
         stock.setVolumeRatio(getDecimal(item, "vol_ratio", "volume_ratio", "volratio", "lb"));
         stock.setAmplitude(getDecimal(item, "amplitude", "zf", "amplitude_rate"));
-        stock.setTurnoverAmount(getDecimal(item, "amount", "turnover_amount", "cje", "cjl"));
-        stock.setCirculatingShares(getDecimal(item, "float_share", "circulating_shares", "ltg"));
+        stock.setTurnoverAmount(getDecimalWithUnit(item, "amount", "turnover_amount", "cje", "cjl"));
+        stock.setCirculatingShares(getDecimalWithUnit(item, "float_share", "circulating_shares", "ltg"));
         stock.setPeRatio(getDecimal(item, "pe", "pe_ratio", "peRatio", "per"));
-        stock.setTotalMarketCap(getDecimal(item, "total_mv", "total_market_cap", "total_market_value"));
-        stock.setCircMarketCap(getDecimal(item, "circ_mv", "circ_market_cap", "circ_market_value"));
+        // 该数据源不含"总市值"字段，不设置 totalMarketCap（避免用 null 覆盖板块同步写入的市值）
+        stock.setCircMarketCap(getDecimalWithUnit(item, "circ_mv", "circ_market_cap", "circ_market_value"));
         stock.setCreateBy("ths-sync");
         stock.setUpdateBy("ths-sync");
         stock.setUpdateTime(java.sql.Timestamp.valueOf(now));
@@ -170,11 +177,11 @@ public class StockQuoteSyncTask
         q.setTurnoverRate(getDecimal(item, "turnover", "turnover_rate", "turnoverrate", "hsl", "turn"));
         q.setVolumeRatio(getDecimal(item, "vol_ratio", "volume_ratio", "volratio", "lb"));
         q.setAmplitude(getDecimal(item, "amplitude", "zf", "amplitude_rate"));
-        q.setTurnoverAmount(getDecimal(item, "amount", "turnover_amount", "cje", "cjl"));
-        q.setCirculatingShares(getDecimal(item, "float_share", "circulating_shares", "ltg"));
+        q.setTurnoverAmount(getDecimalWithUnit(item, "amount", "turnover_amount", "cje", "cjl"));
+        q.setCirculatingShares(getDecimalWithUnit(item, "float_share", "circulating_shares", "ltg"));
         q.setPeRatio(getDecimal(item, "pe", "pe_ratio", "peRatio", "per"));
-        q.setTotalMarketCap(getDecimal(item, "total_mv", "total_market_cap", "total_market_value"));
-        q.setCircMarketCap(getDecimal(item, "circ_mv", "circ_market_cap", "circ_market_value"));
+        // 该数据源不含"总市值"字段，不设置 totalMarketCap
+        q.setCircMarketCap(getDecimalWithUnit(item, "circ_mv", "circ_market_cap", "circ_market_value"));
         return q;
     }
 
@@ -231,6 +238,44 @@ public class StockQuoteSyncTask
                     {
                         return new BigDecimal(text);
                     }
+                }
+                catch (NumberFormatException ignored) { }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 解析带单位后缀的数值（同花顺行情中成交额/流通股/流通市值带"亿"/"万"后缀）
+     * 例: "4.74亿" → 474000000, "1788.00万" → 17880000, "5.10亿" → 510000000
+     * 无效值("-"/"--"/空/非数字) 返回 null
+     */
+    private BigDecimal getDecimalWithUnit(JsonNode node, String... names)
+    {
+        for (String name : names)
+        {
+            JsonNode field = node.get(name);
+            if (field != null && !field.isNull())
+            {
+                String text = field.asText();
+                if (text == null || text.isEmpty() || "-".equals(text) || "--".equals(text))
+                {
+                    continue;
+                }
+                try
+                {
+                    BigDecimal multiplier = BigDecimal.ONE;
+                    if (text.endsWith("亿"))
+                    {
+                        multiplier = new BigDecimal("100000000");
+                        text = text.substring(0, text.length() - 1);
+                    }
+                    else if (text.endsWith("万"))
+                    {
+                        multiplier = new BigDecimal("10000");
+                        text = text.substring(0, text.length() - 1);
+                    }
+                    return new BigDecimal(text).multiply(multiplier);
                 }
                 catch (NumberFormatException ignored) { }
             }
