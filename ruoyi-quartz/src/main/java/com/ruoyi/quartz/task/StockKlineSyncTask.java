@@ -99,7 +99,7 @@ public class StockKlineSyncTask
                 CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                     try
                     {
-                        stockKlineService.getKline(stockCode, market, klineType, startDate, endDate);
+                        stockKlineService.syncKline(stockCode, market, klineType, startDate, endDate);
                         successCount.incrementAndGet();
                     }
                     catch (Exception e)

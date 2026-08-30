@@ -7,13 +7,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.core.annotation.Order;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,10 +22,8 @@ import java.util.List;
  * 使用接口: https://proxy.finance.qq.com/ifzqgtimg/appstock/app/kline/kline
  * 参数格式: param=sh600023,day,2024-01-01,2024-12-31,2000
  */
-@Order(1)
 @Component
-@ConditionalOnProperty(name = "stock.kline.tencent.enabled", havingValue = "true", matchIfMissing = true)
-public class TencentKlineDataSource implements KlineDataSource
+public class TencentKlineDataSource
 {
     private static final Logger log = LoggerFactory.getLogger(TencentKlineDataSource.class);
 
@@ -37,13 +34,6 @@ public class TencentKlineDataSource implements KlineDataSource
     @Value("${stock.kline.tencent.base-url:https://proxy.finance.qq.com}")
     private String baseUrl;
 
-    @Override
-    public String getName()
-    {
-        return "腾讯";
-    }
-
-    @Override
     public List<StockKline> fetchKline(String stockCode, String market, String klineType,
                                        String startDate, String endDate)
     {
@@ -79,7 +69,11 @@ public class TencentKlineDataSource implements KlineDataSource
 
     /**
      * 解析腾讯K线响应数据
-     * 响应格式: {"code":0,"data":{"sh600023":{"day":[["日期","开盘","收盘","最高","最低","成交量"],...]}}}
+     * 响应格式: {"code":0,"data":{"sz000609":{"day":[["日期","开盘","收盘","最高","最低","成交量(手)"],...],
+     *           "qt":{"sz000609":[...]}}}}
+     *  - day 数组字段: [日期, 开盘, 收盘, 最高, 最低, 成交量(手)]
+     *  - 成交量单位是"手"，落库统一 ×100 转"股"
+     *  - 成交额：历史日用 平均价((开+收+高+低)/4) × 成交量(股) 近似；最新交易日用 qt 里的实际成交额
      */
     private List<StockKline> parseResponse(String body, String fullCode, String stockCode, String klineType,
                                            String startDate, String endDate)
@@ -105,18 +99,41 @@ public class TencentKlineDataSource implements KlineDataSource
 
             // 获取K线数据: data.{fullCode}.{klineType}
             String typeKey = convertKlineType(klineType);
-            JsonNode dataNode = root.path("data").path(fullCode).path(typeKey);
+            JsonNode stockNode = root.path("data").path(fullCode);
+            JsonNode dataNode = stockNode.path(typeKey);
 
-            if (dataNode.isMissingNode())
+            if (dataNode.isMissingNode() || !dataNode.isArray())
             {
                 log.warn("腾讯响应中未找到K线数据: path=data.{}.{}", fullCode, typeKey);
                 return result;
             }
 
-            if (!dataNode.isArray())
+            // 提取 qt 里最新交易日的实际成交额（元）和日期，用于覆盖最新一日的 amount
+            String qtDate = null;
+            BigDecimal qtAmount = null;
+            JsonNode qtNode = stockNode.path("qt").path(fullCode);
+            if (qtNode.isArray() && qtNode.size() > 35)
             {
-                log.warn("腾讯K线数据格式异常，期望数组，实际: {}", dataNode.getNodeType());
-                return result;
+                // index 30: 时间 yyyyMMddHHmmss
+                String timeStr = qtNode.get(30).asText();
+                if (timeStr != null && timeStr.length() >= 8)
+                {
+                    qtDate = timeStr.substring(0, 8);
+                }
+                // index 35: "价格/成交量/成交额"，第三段为成交额(元)
+                String priceVolAmt = qtNode.get(35).asText();
+                if (priceVolAmt != null && !priceVolAmt.isEmpty())
+                {
+                    String[] parts = priceVolAmt.split("/");
+                    if (parts.length >= 3)
+                    {
+                        try
+                        {
+                            qtAmount = new BigDecimal(parts[2]);
+                        }
+                        catch (NumberFormatException ignored) { }
+                    }
+                }
             }
 
             SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
@@ -143,34 +160,38 @@ public class TencentKlineDataSource implements KlineDataSource
 
                 try
                 {
+                    BigDecimal open = new BigDecimal(node.get(1).asText());
+                    BigDecimal close = new BigDecimal(node.get(2).asText());
+                    BigDecimal high = new BigDecimal(node.get(3).asText());
+                    BigDecimal low = new BigDecimal(node.get(4).asText());
+                    // 成交量：接口返回"手"，×100 转"股"
+                    long volumeShares = new BigDecimal(node.get(5).asText())
+                            .multiply(BigDecimal.valueOf(100)).longValue();
+
+                    // 成交额：最新交易日用 qt 实际值，历史日用 平均价×成交量(股) 近似
+                    BigDecimal amount;
+                    String dayKey = tradeDate.replace("-", "");
+                    if (qtDate != null && qtDate.equals(dayKey) && qtAmount != null)
+                    {
+                        amount = qtAmount;
+                    }
+                    else
+                    {
+                        BigDecimal avgPrice = open.add(close).add(high).add(low)
+                                .divide(BigDecimal.valueOf(4), 4, RoundingMode.HALF_UP);
+                        amount = avgPrice.multiply(BigDecimal.valueOf(volumeShares));
+                    }
+
                     StockKline kline = new StockKline();
                     kline.setStockCode(stockCode);
                     kline.setKlineType(klineType);
                     kline.setTradeTime(sdf.parse(tradeDate));
-                    kline.setOpenPrice(new BigDecimal(node.get(1).asText()));
-                    kline.setClosePrice(new BigDecimal(node.get(2).asText()));
-                    kline.setHighPrice(new BigDecimal(node.get(3).asText()));
-                    kline.setLowPrice(new BigDecimal(node.get(4).asText()));
-                    kline.setVolume(node.get(5).asLong());
-
-                    // 成交额（第7个字段，可能不存在）
-                    if (node.size() >= 7)
-                    {
-                        String amountStr = node.get(6).asText();
-                        // 处理可能包含非数字字符的情况（如除权信息）
-                        if (amountStr.matches("-?\\d+\\.?\\d*"))
-                        {
-                            kline.setAmount(new BigDecimal(amountStr));
-                        }
-                        else
-                        {
-                            kline.setAmount(BigDecimal.ZERO);
-                        }
-                    }
-                    else
-                    {
-                        kline.setAmount(BigDecimal.ZERO);
-                    }
+                    kline.setOpenPrice(open);
+                    kline.setClosePrice(close);
+                    kline.setHighPrice(high);
+                    kline.setLowPrice(low);
+                    kline.setVolume(volumeShares);
+                    kline.setAmount(amount);
 
                     result.add(kline);
                     parsedCount++;

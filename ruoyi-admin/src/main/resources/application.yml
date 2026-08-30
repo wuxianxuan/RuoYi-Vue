@@ -162,7 +162,6 @@ stock:
   # K线数据源
   kline:
     tencent:
-      enabled: true
       base-url: https://proxy.finance.qq.com
   # 财联社数据源
   cls:
