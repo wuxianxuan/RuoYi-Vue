@@ -54,34 +54,24 @@ public interface StockPlateMapper {
     public int deletePlateByIds(Long[] ids);
 
     /**
-     * 是否存在子板块
-     */
-    public int hasChildByParentId(Long parentId);
-
-    /**
      * 查询板块下的关联股票
      */
-    public List<Stock> selectPlateStocksByPlateId(Long plateId);
-
-    /**
-     * 查询股票关联的板块ID列表
-     */
-    public List<Long> selectPlateIdsByStockId(Long stockId);
+    public List<Stock> selectPlateStocksByPlateCode(@Param("plateCode") String plateCode);
 
     /**
      * 批量添加板块-股票关联
      */
-    public int insertPlateStocks(@Param("plateId") Long plateId, @Param("stockIds") Long[] stockIds);
+    public int insertPlateStocks(@Param("plateCode") String plateCode, @Param("stockCodes") String[] stockCodes);
 
     /**
-     * 批量删除板块-股票关联（按 stockId 列表）
+     * 批量删除板块-股票关联（按 stockCode 列表）
      */
-    public int deletePlateStocks(@Param("plateId") Long plateId, @Param("stockIds") Long[] stockIds);
+    public int deletePlateStocks(@Param("plateCode") String plateCode, @Param("stockCodes") String[] stockCodes);
 
     /**
      * 删除板块下所有股票关联
      */
-    public int deletePlateStocksByPlateId(Long plateId);
+    public int deletePlateStocksByPlateCode(@Param("plateCode") String plateCode);
 
     /**
      * 根据股票代码批量匹配股票
@@ -89,29 +79,14 @@ public interface StockPlateMapper {
     public List<Stock> selectStocksByCodeBatch(@Param("stockCodes") List<String> stockCodes);
 
     /**
-     * 查询后代板块ID列表（通过 FIND_IN_SET）
+     * 批量查询概念关联（按 stock_code IN 列表，返回 stock_code 和概念名称）
      */
-    public List<Long> selectDescendantPlateIds(@Param("plateId") Long plateId);
+    public List<java.util.Map<String, Object>> selectConceptNamesByStockCodes(@Param("stockCodes") List<String> stockCodes);
 
     /**
-     * 根据 ancestors 查询行业全路径板块名称
+     * 批量查询行业关联（按 stock_code IN 列表，返回 stock_code 和叶子行业名称）
      */
-    public List<StockPlate> selectPlatesByIds(@Param("ids") List<Long> ids);
-
-    /**
-     * 查询股票关联的行业板块ID
-     */
-    public List<Long> selectIndustryPlateIdsByStockId(@Param("stockId") Long stockId);
-
-    /**
-     * 更新股票的 industry_name
-     */
-    public int updateStockIndustryName(@Param("stockId") Long stockId, @Param("industryName") String industryName);
-
-    /**
-     * 批量查询概念关联（按 stock_id IN 列表，返回 stock_id 和概念名称）
-     */
-    public List<java.util.Map<String, Object>> selectConceptNamesByStockIds(@Param("stockIds") List<Long> stockIds);
+    public List<java.util.Map<String, Object>> selectIndustryNamesByStockCodes(@Param("stockCodes") List<String> stockCodes);
 
     /**
      * 按名称+类型精确查询板块

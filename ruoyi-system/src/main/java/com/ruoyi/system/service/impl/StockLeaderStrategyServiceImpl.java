@@ -133,7 +133,7 @@ public class StockLeaderStrategyServiceImpl implements IStockLeaderStrategyServi
         Map<String, Stock> candidateMap = new LinkedHashMap<>();
         for (StockPlate plate : plates)
         {
-            List<Stock> stocks = stockPlateService.selectPlateStocks(plate.getId());
+            List<Stock> stocks = stockPlateService.selectPlateStocks(plate.getPlateCode());
             if (stocks == null)
             {
                 continue;
@@ -577,7 +577,7 @@ public class StockLeaderStrategyServiceImpl implements IStockLeaderStrategyServi
 
         StockGroup group = new StockGroup();
         group.setGroupName(groupName);
-        group.setStockIds(top.stream().map(ScoredStock::getId).toArray(Long[]::new));
+        group.setStockCodes(top.stream().map(ScoredStock::getStockCode).toArray(String[]::new));
         group.setCreateBy("system");
         group.setRemark(String.format("观察启动条件：%s（命中%d只）", trigger, matched.size()));
 

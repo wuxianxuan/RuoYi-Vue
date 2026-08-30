@@ -65,11 +65,11 @@ public interface StockMapper
 
     public List<Stock> selectStocksByGroupId(Long groupId);
 
-    public Long[] selectGroupIdsByStockId(Long stockId);
+    public Long[] selectGroupIdsByStockCode(@Param("stockCode") String stockCode);
 
-    public int insertStockGroups(@Param("stockId") Long stockId, @Param("groupIds") Long[] groupIds);
+    public int insertStockGroups(@Param("stockCode") String stockCode, @Param("groupIds") Long[] groupIds);
 
-    public int deleteStockGroupsByStockId(Long stockId);
+    public int deleteStockGroupsByStockCode(@Param("stockCode") String stockCode);
 
     public List<Stock> selectStocksNotInGroup(@Param("groupId") Long groupId, @Param("stock") Stock stock);
 
@@ -82,4 +82,12 @@ public interface StockMapper
      * @return 股票基础集合
      */
     public List<Stock> selectStocksByMarkets(@Param("markets") List<String> markets);
+
+    /**
+     * 批量查询已存在的股票代码（用于判断同步数据中哪些股票需要新增）
+     *
+     * @param codes 股票代码列表
+     * @return 已存在的股票代码集合
+     */
+    public List<String> selectStockCodesByCodes(@Param("codes") List<String> codes);
 }

@@ -11,7 +11,7 @@ import java.util.Date;
  * 保存同花顺行业/概念资金流向快照数据（ths_funds_concept.json / ths_funds_industry.json），
  * 用于板块资金流向分析。
  *
- * 唯一键: (plate_type, code, trade_date)
+ * 唯一键: (plate_type, trade_name, trade_date)
  *
  * @author ruoyi
  */
@@ -30,8 +30,8 @@ public class StockFundFlow
     /** 行业或概念名称 */
     private String tradeName;
 
-    /** 行业或概念代码 */
-    private String code;
+    /** 行业或概念详情页链接 */
+    private String url;
 
     /** 行业或概念指数 */
     private BigDecimal price;

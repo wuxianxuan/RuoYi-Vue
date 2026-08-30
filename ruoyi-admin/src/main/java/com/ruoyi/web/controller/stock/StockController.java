@@ -125,20 +125,20 @@ public class StockController extends BaseController
     /**
      * 获取股票所属的分组
      */
-    @GetMapping("/{id}/groups")
-    public AjaxResult getGroups(@PathVariable Long id)
+    @GetMapping("/{stockCode}/groups")
+    public AjaxResult getGroups(@PathVariable String stockCode)
     {
-        return success(stockService.selectGroupIdsByStockId(id));
+        return success(stockService.selectGroupIdsByStockCode(stockCode));
     }
 
     /**
      * 将股票关联到分组
      */
     @Log(title = "股票基础", businessType = BusinessType.UPDATE)
-    @PostMapping("/{id}/groups")
-    public AjaxResult bindGroups(@PathVariable Long id, @RequestBody Long[] groupIds)
+    @PostMapping("/{stockCode}/groups")
+    public AjaxResult bindGroups(@PathVariable String stockCode, @RequestBody Long[] groupIds)
     {
-        return toAjax(stockService.insertStockGroups(id, groupIds));
+        return toAjax(stockService.insertStockGroups(stockCode, groupIds));
     }
 
     /**

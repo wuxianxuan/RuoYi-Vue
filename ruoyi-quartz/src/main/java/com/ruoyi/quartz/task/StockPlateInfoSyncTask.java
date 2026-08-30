@@ -7,7 +7,6 @@ import com.ruoyi.system.domain.stock.Stock;
 import com.ruoyi.system.domain.stock.StockPlate;
 import com.ruoyi.system.mapper.StockMapper;
 import com.ruoyi.system.mapper.StockPlateMapper;
-import com.ruoyi.system.service.IStockPlateService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,14 +24,15 @@ import java.util.stream.Collectors;
 /**
  * 同花顺板块/概念排名数据同步定时任务
  *
- * 通过同花顺接口获取指定板块/概念的成分股排名数据（按涨跌幅等指标排序），
- * 自动同步板块信息到 stock_plate 表，同步板块-股票关联到 stock_plate_stock 表。
+ * 从 stock_plate 表读取板块/概念记录，逐个按其 plate_code 调用同花顺接口获取成分股排名，
+ * 按 stock_code 持久化股票并同步板块-股票关联到 stock_plate_stock 表（关联用 plate_code + stock_code）。
+ * plate_code 为空/缺的板块会跳过。
  *
- * API: https://d.10jqka.com.cn/v2/blockrank/{plateCode}/{sortField}/d30.js
- * 示例: https://d.10jqka.com.cn/v2/blockrank/881145/199112/d30.js (电力板块)
+ * API: https://d.10jqka.com.cn/v2/blockrank/{plateCode}/{sortField}/d1000.js
+ * 示例: https://d.10jqka.com.cn/v2/blockrank/881145/199112/d1000.js (电力板块)
  *
  * 通过 RuoYi 定时任务管理页面配置，调用目标字符串: stockPlateInfoSyncTask.sync()
- * 建议 cron: 0 0 16 * * MON-FRI（每个交易日下午4:00）
+ * 建议 cron: 0 0 16 ? * MON-FRI（每个交易日下午4:00）
  *
  * @author ruoyi
  */
@@ -44,7 +44,7 @@ public class StockPlateInfoSyncTask
     /** 同花顺板块排名API基础地址 */
     private static final String BLOCK_RANK_API = "https://d.10jqka.com.cn/v2/blockrank";
 
-    /** 默认排名周期(30天) */
+    /** 默认排名周期 */
     private static final String DEFAULT_PERIOD = "d1000";
 
     /** 默认排序字段: 涨跌幅 */
@@ -52,62 +52,6 @@ public class StockPlateInfoSyncTask
 
     /** JSONP 包装函数名正则 */
     private static final Pattern JSONP_PATTERN = Pattern.compile("^[a-zA-Z_][\\w]*\\((.*)\\)\\s*$");
-
-    /**
-     * 默认板块配置 — 同花顺代码 → (板块名称, 板块类型)
-     * 取自同花顺热门行业榜+热门概念榜
-     * 类型: CONCEPT=概念板块, INDUSTRY=行业板块
-     */
-    private static final Map<String, PlateConfig> DEFAULT_PLATES = new LinkedHashMap<>();
-    static {
-        // ========== 热门行业板块（INDUSTRY） ==========
-        DEFAULT_PLATES.put("881145", new PlateConfig("电力", "INDUSTRY"));
-        DEFAULT_PLATES.put("881270", new PlateConfig("元件", "INDUSTRY"));
-        DEFAULT_PLATES.put("881121", new PlateConfig("半导体", "INDUSTRY"));
-        DEFAULT_PLATES.put("881129", new PlateConfig("通信设备", "INDUSTRY"));
-        DEFAULT_PLATES.put("881157", new PlateConfig("证券", "INDUSTRY"));
-        DEFAULT_PLATES.put("881105", new PlateConfig("煤炭开采加工", "INDUSTRY"));
-        DEFAULT_PLATES.put("881170", new PlateConfig("小金属", "INDUSTRY"));
-        DEFAULT_PLATES.put("881273", new PlateConfig("白酒", "INDUSTRY"));
-        DEFAULT_PLATES.put("881278", new PlateConfig("电网设备", "INDUSTRY"));
-        DEFAULT_PLATES.put("881169", new PlateConfig("贵金属", "INDUSTRY"));
-        DEFAULT_PLATES.put("881168", new PlateConfig("工业金属", "INDUSTRY"));
-        DEFAULT_PLATES.put("881158", new PlateConfig("零售", "INDUSTRY"));
-        DEFAULT_PLATES.put("884054", new PlateConfig("铜", "INDUSTRY"));
-        DEFAULT_PLATES.put("881124", new PlateConfig("消费电子", "INDUSTRY"));
-        DEFAULT_PLATES.put("881281", new PlateConfig("电池", "INDUSTRY"));
-        DEFAULT_PLATES.put("881164", new PlateConfig("文化传媒", "INDUSTRY"));
-        DEFAULT_PLATES.put("881122", new PlateConfig("光学光电子", "INDUSTRY"));
-        DEFAULT_PLATES.put("881155", new PlateConfig("银行", "INDUSTRY"));
-        DEFAULT_PLATES.put("881279", new PlateConfig("光伏设备", "INDUSTRY"));
-        DEFAULT_PLATES.put("881272", new PlateConfig("软件开发", "INDUSTRY"));
-
-        // ========== 热门概念板块（CONCEPT） ==========
-        DEFAULT_PLATES.put("886033", new PlateConfig("共封装光学(CPO)", "CONCEPT"));
-        DEFAULT_PLATES.put("886084", new PlateConfig("光纤概念", "CONCEPT"));
-        DEFAULT_PLATES.put("885959", new PlateConfig("PCB概念", "CONCEPT"));
-        DEFAULT_PLATES.put("886071", new PlateConfig("AI PC", "CONCEPT"));
-        DEFAULT_PLATES.put("886042", new PlateConfig("存储芯片", "CONCEPT"));
-        DEFAULT_PLATES.put("885887", new PlateConfig("数据中心(AIDC)", "CONCEPT"));
-        DEFAULT_PLATES.put("885937", new PlateConfig("培育钻石", "CONCEPT"));
-        DEFAULT_PLATES.put("886078", new PlateConfig("商业航天", "CONCEPT"));
-        DEFAULT_PLATES.put("885886", new PlateConfig("超级电容", "CONCEPT"));
-        DEFAULT_PLATES.put("886069", new PlateConfig("人形机器人", "CONCEPT"));
-        DEFAULT_PLATES.put("886073", new PlateConfig("铜缆高速连接", "CONCEPT"));
-        DEFAULT_PLATES.put("886009", new PlateConfig("先进封装", "CONCEPT"));
-        DEFAULT_PLATES.put("886108", new PlateConfig("AI应用", "CONCEPT"));
-        DEFAULT_PLATES.put("886050", new PlateConfig("算力租赁", "CONCEPT"));
-        DEFAULT_PLATES.put("885699", new PlateConfig("ST板块", "CONCEPT"));
-        DEFAULT_PLATES.put("885517", new PlateConfig("机器人概念", "CONCEPT"));
-        DEFAULT_PLATES.put("886044", new PlateConfig("液冷服务器", "CONCEPT"));
-        DEFAULT_PLATES.put("885756", new PlateConfig("芯片概念", "CONCEPT"));
-        DEFAULT_PLATES.put("886015", new PlateConfig("创新药", "CONCEPT"));
-        DEFAULT_PLATES.put("886019", new PlateConfig("AIGC概念", "CONCEPT"));
-        DEFAULT_PLATES.put("885530", new PlateConfig("黄金概念", "CONCEPT"));
-        DEFAULT_PLATES.put("885428", new PlateConfig("特钢概念", "CONCEPT"));
-        DEFAULT_PLATES.put("885914", new PlateConfig("煤炭概念", "CONCEPT"));
-        DEFAULT_PLATES.put("885398", new PlateConfig("煤化工概念", "CONCEPT"));
-    }
 
     private final ObjectMapper objectMapper = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -120,9 +64,6 @@ public class StockPlateInfoSyncTask
 
     @Autowired
     private StockPlateMapper stockPlateMapper;
-
-    @Autowired
-    private IStockPlateService stockPlateService;
 
     // ==================== 可配置属性 ====================
 
@@ -143,34 +84,38 @@ public class StockPlateInfoSyncTask
     // ==================== 对外调用入口 ====================
 
     /**
-     * 无参调用：使用默认板块列表同步
+     * 从 stock_plate 表读取板块记录，逐个同步其成分股
      */
     public void sync()
     {
-        sync(null);
-    }
+        log.info("========== 开始同步同花顺板块/概念数据（从 stock_plate 读取） ==========");
 
-    /**
-     * 带参调用
-     *
-     * @param params 参数格式支持：
-     *               1. 空或 null → 使用默认板块列表
-     *               2. 纯数字 → 单个板块代码，如 "881145"
-     *               3. "plateCode1,plateCode2" → 多个板块代码，逗号分隔
-     *               4. "plateCode:sortField" → 指定板块和排序字段
-     */
-    public void sync(String params)
-    {
-        log.info("========== 开始同步同花顺板块/概念数据 ==========");
+        // 1. 从 stock_plate 读取所有板块
+        List<StockPlate> plates = stockPlateMapper.selectPlateList(new StockPlate());
+        if (plates == null || plates.isEmpty())
+        {
+            log.warn("stock_plate 表中无板块记录，跳过同步");
+            return;
+        }
 
-        List<SyncConfig> configs = parseParams(params);
+        // 2. 过滤出带 plate_code 的板块
+        List<StockPlate> syncPlates = plates.stream()
+                .filter(p -> p.getPlateCode() != null && !p.getPlateCode().trim().isEmpty())
+                .collect(Collectors.toList());
+        if (syncPlates.isEmpty())
+        {
+            log.warn("stock_plate 中没有带 plate_code 的板块，跳过同步");
+            return;
+        }
+        log.info("从 stock_plate 读取 {} 个板块，其中 {} 个带 plate_code 需同步",
+                plates.size(), syncPlates.size());
 
         SyncResult totalResult = new SyncResult();
-        for (SyncConfig config : configs)
+        for (StockPlate plate : syncPlates)
         {
             try
             {
-                SyncResult result = syncPlate(config);
+                SyncResult result = syncPlate(plate);
                 totalResult.add(result);
             }
             catch (InterruptedException e)
@@ -181,122 +126,72 @@ public class StockPlateInfoSyncTask
             }
             catch (Exception e)
             {
-                log.error("板块 [{}] 同步异常", config.plateCode, e);
+                log.error("板块 [{}] {} 同步异常", plate.getPlateCode(), plate.getPlateName(), e);
                 totalResult.failedPlates++;
             }
 
             // 请求间隔，避免被反爬
-            if (configs.size() > 1)
+            if (syncPlates.size() > 1)
             {
                 try { Thread.sleep(500); }
                 catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
             }
         }
 
-        log.info("========== 板块同步完成: 成功{}板块, 失败{}板块, 新增/更新股票{}只, 关联{}条 ==========",
+        log.info("========== 板块同步完成: 成功{}板块, 失败{}板块, 新增股票{}只, 更新股票{}只, 关联{}条 ==========",
                 totalResult.successPlates, totalResult.failedPlates,
-                totalResult.stocksCreated + totalResult.stocksUpdated,
+                totalResult.stocksCreated, totalResult.stocksUpdated,
                 totalResult.associationsSaved);
     }
 
     /**
      * 同步单个板块/概念
      */
-    private SyncResult syncPlate(SyncConfig config) throws InterruptedException
+    private SyncResult syncPlate(StockPlate plate) throws InterruptedException
     {
         SyncResult result = new SyncResult();
-        String thsCode = config.plateCode;
+        String plateCode = plate.getPlateCode();
 
         // 1. 调用 API 获取板块排名数据
-        BlockRankResponse response = fetchBlockRank(thsCode, config.sortField, DEFAULT_PERIOD);
+        BlockRankResponse response = fetchBlockRank(plateCode, DEFAULT_SORT, DEFAULT_PERIOD);
         if (response == null || response.getItems() == null || response.getItems().isEmpty())
         {
-            log.warn("板块 [{}] 无数据返回，跳过", thsCode);
+            log.warn("板块 [{}] 无数据返回，跳过", plateCode);
             result.failedPlates++;
             return result;
         }
 
-        String plateName = response.getPlateName();
         List<BlockRankResponse.BlockRankItem> items = response.getItems();
+        log.info("━━━ [{}] {} (plateCode:{}) — 成分股{}只 ━━━",
+                plate.getPlateType(), plate.getPlateName(), plateCode, items.size());
 
-        log.info("━━━ [{}] {} (同花顺代码:{}) — 成分股{}只 ━━━",
-                config.plateType, plateName, thsCode, items.size());
+        // 2. 持久化股票记录（按 stock_code），返回股票代码集合
+        PersistResult pr = persistStocks(items);
+        result.stocksCreated = pr.created;
+        result.stocksUpdated = pr.updated;
 
-        // 2. 持久化板块记录
-        Long plateId = upsertPlate(thsCode, plateName, config.plateType);
-
-        // 3. 持久化股票记录 & 收集 stock_id
-        List<Long> stockIds = persistStocks(items);
-
-        // 4. 同步板块-股票关联
-        int assocCount = syncPlateStockAssociations(plateId, stockIds);
-        result.associationsSaved = assocCount;
+        // 3. 同步板块-股票关联 (plate_code, stock_code)
+        result.associationsSaved = syncPlateStockAssociations(plateCode, pr.stockCodes);
         result.successPlates = 1;
 
-        // 5. 日志输出
-        logTopStocks(items, config.sortField);
+        // 4. 日志输出
+        logTopStocks(items, DEFAULT_SORT);
 
         return result;
-    }
-
-    // ==================== 板块持久化 ====================
-
-    /**
-     * 查找或创建板块记录
-     *
-     * @param thsCode   同花顺板块代码
-     * @param plateName 板块名称（从API获取）
-     * @param plateType 板块类型 INDUSTRY/CONCEPT
-     * @return 板块ID
-     */
-    private Long upsertPlate(String thsCode, String plateName, String plateType)
-    {
-        // 1. 按名称+类型查找是否已存在
-        StockPlate existing = stockPlateMapper.selectPlateByNameAndType(plateName, plateType);
-        if (existing != null)
-        {
-            // 更新 remark 字段存储同花顺代码（方便后续查询）
-            if (!thsCode.equals(existing.getRemark()))
-            {
-                existing.setRemark(thsCode);
-                stockPlateService.updatePlate(existing);
-            }
-            log.debug("板块已存在: id={}, name={}, type={}", existing.getId(), plateName, plateType);
-            return existing.getId();
-        }
-
-        // 2. 不存在则通过 service 创建（自动处理 level/ancestors）
-        StockPlate plate = new StockPlate();
-        plate.setPlateName(plateName);
-        plate.setPlateType(plateType);
-        plate.setRemark(thsCode); // remark 存同花顺代码
-        plate.setCreateBy("system");
-        // parentId 不设或设0，由 service 按一级板块处理
-
-        int rows = stockPlateService.insertPlate(plate);
-        if (rows > 0 && plate.getId() != null)
-        {
-            log.info("创建板块: id={}, name={}, type={}, thsCode={}",
-                    plate.getId(), plateName, plateType, thsCode);
-            return plate.getId();
-        }
-        else
-        {
-            throw new RuntimeException("创建板块失败: " + plateName);
-        }
     }
 
     // ==================== 股票持久化 ====================
 
     /**
-     * 从排名数据中持久化股票记录
-     * 已存在的更新名称，不存在的自动创建
+     * 从排名数据中持久化股票记录（按 stock_code），已存在则更新名称/PE/流通市值，不存在则自动创建
      *
      * @param items 板块排名中的股票列表
-     * @return 对应的 stock 表 ID 列表
+     * @return 股票代码集合 + 新增/更新数量
      */
-    private List<Long> persistStocks(List<BlockRankResponse.BlockRankItem> items)
+    private PersistResult persistStocks(List<BlockRankResponse.BlockRankItem> items)
     {
+        PersistResult pr = new PersistResult();
+
         // 1. 提取所有股票代码
         List<String> stockCodes = items.stream()
                 .map(BlockRankResponse.BlockRankItem::getStockCode)
@@ -306,7 +201,7 @@ public class StockPlateInfoSyncTask
 
         if (stockCodes.isEmpty())
         {
-            return Collections.emptyList();
+            return pr;
         }
 
         // 2. 批量查询已存在的股票
@@ -314,7 +209,7 @@ public class StockPlateInfoSyncTask
         Map<String, Stock> existingMap = existingStocks.stream()
                 .collect(Collectors.toMap(Stock::getStockCode, s -> s, (a, b) -> a));
 
-        // 3. 构建 code → name 映射
+        // 3. 构建 code → name / code → item 映射
         Map<String, String> codeNameMap = items.stream()
                 .filter(i -> i.getStockCode() != null && i.getStockName() != null)
                 .collect(Collectors.toMap(
@@ -322,18 +217,16 @@ public class StockPlateInfoSyncTask
                         BlockRankResponse.BlockRankItem::getStockName,
                         (a, b) -> a));
 
-        // 4. 分类处理
-        List<Stock> newStocks = new ArrayList<>();
-        List<Stock> updateStocks = new ArrayList<>();
-        Map<String, Long> codeIdMap = new LinkedHashMap<>();
-
-        // 构建 code → BlockRankItem 映射（用于获取PE/市值）
         Map<String, BlockRankResponse.BlockRankItem> codeItemMap = items.stream()
                 .filter(i -> i.getStockCode() != null)
                 .collect(Collectors.toMap(
                         BlockRankResponse.BlockRankItem::getStockCode,
                         i -> i,
                         (a, b) -> a));
+
+        // 4. 分类处理
+        List<Stock> newStocks = new ArrayList<>();
+        List<Stock> updateStocks = new ArrayList<>();
 
         for (String code : stockCodes)
         {
@@ -344,107 +237,71 @@ public class StockPlateInfoSyncTask
             if (existingMap.containsKey(code))
             {
                 Stock s = existingMap.get(code);
-                // 更新名称（同花顺的名称可能更准确）
+                boolean changed = false;
                 if (name != null && !name.equals(s.getStockName()))
                 {
                     s.setStockName(name);
-                    if (!updateStocks.contains(s)) updateStocks.add(s);
+                    changed = true;
                 }
-                // 补充市场
                 if (s.getMarket() == null && market != null)
                 {
                     s.setMarket(market);
-                    if (!updateStocks.contains(s)) updateStocks.add(s);
+                    changed = true;
                 }
-                // 更新PE/市值（同花顺提供的财务数据）
                 if (item != null && enrichStockFromItem(s, item))
                 {
-                    if (!updateStocks.contains(s)) updateStocks.add(s);
+                    changed = true;
                 }
-                codeIdMap.put(code, s.getId());
+                if (changed)
+                {
+                    updateStocks.add(s);
+                }
+            }
+            else if (autoCreateStock)
+            {
+                Stock s = new Stock();
+                s.setStockCode(code);
+                s.setStockName(name);
+                s.setMarket(market);
+                if (item != null)
+                {
+                    s.setPeRatio(item.getPeRatio());
+                    s.setCircMarketCap(item.getCircMarketCap());
+                }
+                s.setCreateBy("system");
+                newStocks.add(s);
             }
             else
             {
-                if (autoCreateStock)
-                {
-                    Stock s = new Stock();
-                    s.setStockCode(code);
-                    s.setStockName(name);
-                    s.setMarket(market);
-                    // 填充PE/市值
-                    if (item != null)
-                    {
-                        s.setPeRatio(item.getPeRatio());
-                        s.setTotalMarketCap(item.getTotalMarketCap());
-                        s.setCircMarketCap(item.getCircMarketCap());
-                    }
-                    s.setCreateBy("system");
-                    newStocks.add(s);
-                }
-                else
-                {
-                    log.debug("股票不在库中且未开启自动创建: {} {}", code, name);
-                }
+                log.debug("股票不在库中且未开启自动创建: {} {}", code, name);
             }
         }
 
-        // 5. 批量插入新股票
+        // 5. 批量插入/更新
         if (!newStocks.isEmpty())
         {
             stockMapper.batchInsertListIgnoreSame(newStocks);
             log.info("新增股票 {} 只", newStocks.size());
-
-            // 重新查询获取 ID
-            List<String> newCodes = newStocks.stream()
-                    .map(Stock::getStockCode)
-                    .collect(Collectors.toList());
-            List<Stock> inserted = stockPlateMapper.selectStocksByCodeBatch(newCodes);
-            for (Stock s : inserted)
-            {
-                codeIdMap.put(s.getStockCode(), s.getId());
-            }
-            // 仍有未拿到 ID 的（可能重复被忽略），留作日志
-            for (Stock s : newStocks)
-            {
-                codeIdMap.putIfAbsent(s.getStockCode(), -1L);
-            }
         }
-
-        // 6. 批量更新已有股票名称
         if (!updateStocks.isEmpty())
         {
             for (Stock s : updateStocks)
             {
                 stockMapper.updateStock(s);
             }
-            log.debug("更新股票名称 {} 只", updateStocks.size());
+            log.debug("更新股票 {} 只", updateStocks.size());
         }
 
-        // 7. 添加已存在但未更新的股票
-        for (Stock s : existingStocks)
-        {
-            codeIdMap.putIfAbsent(s.getStockCode(), s.getId());
-        }
-
-        // 8. 返回有效的 stock_id 列表
-        List<Long> result = new ArrayList<>();
-        for (String code : stockCodes)
-        {
-            Long id = codeIdMap.get(code);
-            if (id != null && id > 0)
-            {
-                result.add(id);
-            }
-        }
-
-        log.info("股票处理: 已有{}只, 新增{}只, 更新{}只, 有效关联{}只",
-                existingStocks.size(), newStocks.size(), updateStocks.size(), result.size());
-
-        return result;
+        pr.stockCodes = stockCodes;
+        pr.created = newStocks.size();
+        pr.updated = updateStocks.size();
+        log.info("股票处理: 已有{}只, 新增{}只, 更新{}只",
+                existingStocks.size(), newStocks.size(), updateStocks.size());
+        return pr;
     }
 
     /**
-     * 用 BlockRankItem 中的PE/市值数据更新 Stock 对象
+     * 用 BlockRankItem 中的PE/流通市值数据更新 Stock 对象
      *
      * @return true 表示有数据被更新
      */
@@ -455,11 +312,6 @@ public class StockPlateInfoSyncTask
         if (item.getPeRatio() != null)
         {
             stock.setPeRatio(item.getPeRatio());
-            changed = true;
-        }
-        if (item.getTotalMarketCap() != null)
-        {
-            stock.setTotalMarketCap(item.getTotalMarketCap());
             changed = true;
         }
         if (item.getCircMarketCap() != null)
@@ -487,40 +339,30 @@ public class StockPlateInfoSyncTask
     // ==================== 关联同步 ====================
 
     /**
-     * 同步板块-股票关联（通过 IStockPlateService 自动同步 industry_name）
+     * 同步板块-股票关联（按 plate_code + stock_code）
      *
-     * @param plateId  板块ID
-     * @param stockIds 股票ID列表
+     * @param plateCode  板块代码
+     * @param stockCodes 股票代码列表
      * @return 保存的关联数量
      */
-    private int syncPlateStockAssociations(Long plateId, List<Long> stockIds)
+    private int syncPlateStockAssociations(String plateCode, List<String> stockCodes)
     {
-        if (plateId == null || stockIds.isEmpty())
+        if (plateCode == null || stockCodes == null || stockCodes.isEmpty())
         {
             return 0;
         }
 
         if (fullReplace)
         {
-            // 全量替换：先查出原有关联，通过 service 删除（触发 industry_name 清理）
-            List<Stock> oldStocks = stockPlateMapper.selectPlateStocksByPlateId(plateId);
-            if (!oldStocks.isEmpty())
-            {
-                Long[] oldIds = oldStocks.stream()
-                        .map(Stock::getId)
-                        .toArray(Long[]::new);
-                stockPlateService.deletePlateStocks(plateId, oldIds);
-                log.debug("清空板块 [{}] 原有 {} 条关联（含 industry_name 清理）",
-                        plateId, oldIds.length);
-            }
+            stockPlateMapper.deletePlateStocksByPlateCode(plateCode);
+            log.debug("清空板块 [{}] 原有关联", plateCode);
         }
 
-        // 通过 service 批量插入（触发 industry_name 填充）
-        Long[] stockIdArray = stockIds.toArray(new Long[0]);
-        int rows = stockPlateService.insertPlateStocks(plateId, stockIdArray);
+        String[] codeArray = stockCodes.toArray(new String[0]);
+        int rows = stockPlateMapper.insertPlateStocks(plateCode, codeArray);
 
-        log.info("板块 [{}] 关联同步完成: {} 只股票, 模式={}, industry_name 已同步",
-                plateId, stockIds.size(), fullReplace ? "全量替换" : "增量追加");
+        log.info("板块 [{}] 关联同步完成: {} 只股票, 模式={}",
+                plateCode, stockCodes.size(), fullReplace ? "全量替换" : "增量追加");
         return rows;
     }
 
@@ -668,96 +510,14 @@ public class StockPlateInfoSyncTask
                 upCount, downCount, flatCount, maxUpName, maxUp, maxDownName, maxDown);
     }
 
-    // ==================== 参数解析 ====================
-
-    private List<SyncConfig> parseParams(String params)
-    {
-        if (params == null || params.trim().isEmpty())
-        {
-            return buildDefaultConfigs();
-        }
-
-        String trimmed = params.trim();
-
-        // 单个板块代码 "881145"
-        if (trimmed.matches("\\d+"))
-        {
-            PlateConfig pc = DEFAULT_PLATES.getOrDefault(trimmed,
-                    new PlateConfig("板块" + trimmed, "CONCEPT"));
-            return Collections.singletonList(
-                    new SyncConfig(trimmed, DEFAULT_SORT, pc.type));
-        }
-
-        // plateCode:sortField "881145:199112"
-        if (trimmed.matches("\\d+:\\d+"))
-        {
-            String[] parts = trimmed.split(":");
-            PlateConfig pc = DEFAULT_PLATES.getOrDefault(parts[0],
-                    new PlateConfig("板块" + parts[0], "CONCEPT"));
-            return Collections.singletonList(
-                    new SyncConfig(parts[0], parts[1], pc.type));
-        }
-
-        // 多个板块（逗号分隔）"881145,881121,881126"
-        if (trimmed.matches("[\\d,\\s]+"))
-        {
-            List<SyncConfig> configs = new ArrayList<>();
-            for (String code : trimmed.split("[,\\s]+"))
-            {
-                code = code.trim();
-                if (!code.isEmpty())
-                {
-                    PlateConfig pc = DEFAULT_PLATES.getOrDefault(code,
-                            new PlateConfig("板块" + code, "CONCEPT"));
-                    configs.add(new SyncConfig(code, DEFAULT_SORT, pc.type));
-                }
-            }
-            return configs;
-        }
-
-        log.warn("参数格式无法识别: {}, 使用默认板块列表", params);
-        return buildDefaultConfigs();
-    }
-
-    private List<SyncConfig> buildDefaultConfigs()
-    {
-        List<SyncConfig> configs = new ArrayList<>();
-        for (Map.Entry<String, PlateConfig> entry : DEFAULT_PLATES.entrySet())
-        {
-            PlateConfig pc = entry.getValue();
-            configs.add(new SyncConfig(entry.getKey(), DEFAULT_SORT, pc.type));
-        }
-        return configs;
-    }
-
     // ==================== 内部类 ====================
 
-    /** 板块配置 */
-    private static class PlateConfig
+    /** 股票持久化结果 */
+    private static class PersistResult
     {
-        final String name;
-        final String type;  // INDUSTRY / CONCEPT
-
-        PlateConfig(String name, String type)
-        {
-            this.name = name;
-            this.type = type;
-        }
-    }
-
-    /** 同步配置 */
-    private static class SyncConfig
-    {
-        final String plateCode;
-        final String sortField;
-        final String plateType;
-
-        SyncConfig(String plateCode, String sortField, String plateType)
-        {
-            this.plateCode = plateCode;
-            this.sortField = sortField;
-            this.plateType = plateType;
-        }
+        List<String> stockCodes = new ArrayList<>();
+        int created = 0;
+        int updated = 0;
     }
 
     /** 同步结果统计 */

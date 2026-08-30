@@ -21,7 +21,10 @@ import java.sql.Date;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 同花顺个股行情同步定时任务
@@ -33,11 +36,11 @@ import java.util.List;
  *   speed 涨速% / turnover 换手率% / vol_ratio 量比 / amplitude 振幅% /
  *   amount 成交额(带"亿"/"万"单位) / float_share 流通股(带"万"/"亿"单位) /
  *   circ_mv 流通市值(带"亿"单位) / pe 市盈率("亏损"/"--" 表示无效)
- *   注意：该数据源不含"总市值(total_market_cap)"字段。
  *
  * 写入策略（拆分）:
- *   stock 表           → 当前最新快照（现价/涨跌幅/换手率/流通市值等），供列表展示，upsert 覆盖
- *   stock_daily_quote  → 每日行情快照（价格/PE/市值/换手率等），INSERT IGNORE 保留全部历史
+ *   stock_daily_quote  → 每日行情快照（价格/PE/流通市值/换手率等），INSERT IGNORE 保留全部历史
+ *   stock 表           → 身份 + 最新快照（快照字段取自 stock_daily_quote，market 按代码推导）；
+ *                        同步末尾检查本次代码是否已存在，缺失则创建，已存在则更新最新快照
  *
  * @author ruoyi
  */
@@ -103,16 +106,17 @@ public class StockQuoteSyncTask
             LocalDate tradeDate = parseTradeDate(fetchTime);
             log.info("交易日期: {}, 总条数: {}", tradeDate, dataNode.size());
 
-            // 2. 转换并分两路写入
+            // 2. 转换：写入历史 + 收集最新快照
             log.info("[2/4] 转换数据...");
-            List<Stock> stockBatch = new ArrayList<>();
+            List<Stock> stockList = new ArrayList<>();
             List<StockDailyQuote> quoteBatch = new ArrayList<>();
+            Set<String> syncedCodes = new LinkedHashSet<>();
             int total = 0;
 
             for (JsonNode item : dataNode)
             {
-                Stock stock = buildStock(item);
                 StockDailyQuote quote = buildDailyQuote(item, tradeDate);
+                Stock stock = buildStock(item, quote);
 
                 if (stock.getStockCode() == null)
                 {
@@ -120,25 +124,44 @@ public class StockQuoteSyncTask
                     continue;
                 }
 
-                stockBatch.add(stock);
+                stockList.add(stock);
                 quoteBatch.add(quote);
+                syncedCodes.add(stock.getStockCode());
                 total++;
 
-                if (stockBatch.size() >= DB_BATCH_SIZE)
+                if (quoteBatch.size() >= DB_BATCH_SIZE)
                 {
-                    flushStockBatch(stockBatch);
                     flushQuoteBatch(quoteBatch);
                 }
             }
-            if (!stockBatch.isEmpty())
+            if (!quoteBatch.isEmpty())
             {
-                flushStockBatch(stockBatch);
                 flushQuoteBatch(quoteBatch);
             }
 
-            // 3. 日志
-            log.info("[3/4] stock 基础信息已更新");
-            log.info("[4/4] stock_daily_quote 快照已保存 (date={})", tradeDate);
+            // 3. 检查本次同步的股票是否已存在，缺失则创建
+            log.info("[3/4] 检查股票是否已存在...");
+            List<String> existingCodes = stockMapper.selectStockCodesByCodes(new ArrayList<>(syncedCodes));
+            Set<String> existingSet = new HashSet<>(existingCodes);
+            int newCount = 0;
+            for (String code : syncedCodes)
+            {
+                if (!existingSet.contains(code))
+                {
+                    newCount++;
+                }
+            }
+            log.info("本次同步 {} 只股票：新增 {} 只，已存在 {} 只", total, newCount, total - newCount);
+
+            // 4. 批量 upsert stock（缺失则创建、已存在则更新最新快照）
+            log.info("[4/4] 写入 stock 最新快照...");
+            for (int i = 0; i < stockList.size(); i += DB_BATCH_SIZE)
+            {
+                int end = Math.min(i + DB_BATCH_SIZE, stockList.size());
+                flushStockBatch(new ArrayList<>(stockList.subList(i, end)));
+            }
+
+            log.info("stock_daily_quote 快照已保存 (date={})", tradeDate);
             log.info("========== 完成: {} 条 ==========", total);
         }
         catch (Exception e)
@@ -154,7 +177,7 @@ public class StockQuoteSyncTask
 
     /**
      * 同步行业/概念资金流向（ths_funds_concept.json / ths_funds_industry.json）
-     * 写入 stock_fund_flow 表，按 (plate_type, code, trade_date) INSERT IGNORE 保留全部历史。
+     * 写入 stock_fund_flow 表，按 (plate_type, trade_name, trade_date) INSERT IGNORE 保留全部历史。
      */
     private void syncFundFlow()
     {
@@ -191,7 +214,7 @@ public class StockQuoteSyncTask
             for (JsonNode item : dataNode)
             {
                 StockFundFlow flow = buildFundFlow(item, plateType, tradeDate);
-                if (flow.getCode() == null)
+                if (flow.getUrl() == null)
                 {
                     log.trace("跳过无效资金流向数据: {}", item);
                     continue;
@@ -221,7 +244,7 @@ public class StockQuoteSyncTask
         flow.setPlateType(plateType);
         flow.setTradeDate(tradeDate == null ? null : Date.valueOf(tradeDate));
         flow.setTradeName(getString(item, "tradename"));
-        flow.setCode(getString(item, "code"));
+        flow.setUrl(getString(item, "url"));
         flow.setPrice(getDecimal(item, "price"));
         flow.setTradeZdf(getPercent(item, "tradezdf"));
         flow.setBuy(getDecimal(item, "buy"));
@@ -249,29 +272,28 @@ public class StockQuoteSyncTask
 
     // ==================== 数据构建 ====================
 
-    /** 构建完整 Stock（stock 表 — 向后兼容，保留完整快照字段） */
-    private Stock buildStock(JsonNode item)
+    /** 构建 Stock（身份 + 最新快照，快照字段直接取自 stock_daily_quote，market 按代码推导） */
+    private Stock buildStock(JsonNode item, StockDailyQuote quote)
     {
         Stock stock = new Stock();
-        LocalDateTime now = LocalDateTime.now();
-        stock.setStockCode(getString(item, "code", "stockCode", "stock_code", "symbol"));
+        stock.setStockCode(quote.getStockCode());
         stock.setStockName(getString(item, "name", "stockName", "stock_name"));
-        stock.setMarket(inferMarket(item));
-        // 快照字段（保留在 stock 表中供当前页面展示）
-        stock.setCurrentPrice(getDecimal(item, "now", "current_price", "price", "last_price", "trade"));
-        stock.setChangeRate(getDecimal(item, "change", "change_rate", "zdf", "changepercent", "pctChg"));
-        stock.setPriceChange(getDecimal(item, "change_amount", "price_change", "zde", "changeamount", "chg"));
-        stock.setTurnoverRate(getDecimal(item, "turnover", "turnover_rate", "turnoverrate", "hsl", "turn"));
-        stock.setVolumeRatio(getDecimal(item, "vol_ratio", "volume_ratio", "volratio", "lb"));
-        stock.setAmplitude(getDecimal(item, "amplitude", "zf", "amplitude_rate"));
-        stock.setTurnoverAmount(getDecimalWithUnit(item, "amount", "turnover_amount", "cje", "cjl"));
-        stock.setCirculatingShares(getDecimalWithUnit(item, "float_share", "circulating_shares", "ltg"));
-        stock.setPeRatio(getDecimal(item, "pe", "pe_ratio", "peRatio", "per"));
-        // 该数据源不含"总市值"字段，不设置 totalMarketCap（避免用 null 覆盖板块同步写入的市值）
-        stock.setCircMarketCap(getDecimalWithUnit(item, "circ_mv", "circ_market_cap", "circ_market_value"));
+        stock.setMarket(inferMarket(quote.getStockCode()));
+        // 快照字段取自 stock_daily_quote 最新数据
+        stock.setCurrentPrice(quote.getCurrentPrice());
+        stock.setChangeRate(quote.getChangeRate());
+        stock.setPriceChange(quote.getPriceChange());
+        stock.setSpeed(quote.getSpeed());
+        stock.setTurnoverRate(quote.getTurnoverRate());
+        stock.setVolumeRatio(quote.getVolumeRatio());
+        stock.setAmplitude(quote.getAmplitude());
+        stock.setTurnoverAmount(quote.getTurnoverAmount());
+        stock.setCirculatingShares(quote.getCirculatingShares());
+        stock.setCircMarketCap(quote.getCircMarketCap());
+        stock.setPeRatio(quote.getPeRatio());
         stock.setCreateBy("ths-sync");
         stock.setUpdateBy("ths-sync");
-        stock.setUpdateTime(java.sql.Timestamp.valueOf(now));
+        stock.setUpdateTime(java.sql.Timestamp.valueOf(LocalDateTime.now()));
         return stock;
     }
 
@@ -291,21 +313,19 @@ public class StockQuoteSyncTask
         q.setTurnoverAmount(getDecimalWithUnit(item, "amount", "turnover_amount", "cje", "cjl"));
         q.setCirculatingShares(getDecimalWithUnit(item, "float_share", "circulating_shares", "ltg"));
         q.setPeRatio(getDecimal(item, "pe", "pe_ratio", "peRatio", "per"));
-        // 该数据源不含"总市值"字段，不设置 totalMarketCap
         q.setCircMarketCap(getDecimalWithUnit(item, "circ_mv", "circ_market_cap", "circ_market_value"));
         return q;
     }
 
-    private String inferMarket(JsonNode item)
+    /** 根据股票代码规则生成所属市场交易所 */
+    private String inferMarket(String code)
     {
-        String market = getString(item, "market", "m", "type");
-        if (market != null && !market.isEmpty()) return market.toUpperCase();
-        String code = getString(item, "code", "stockCode", "stock_code", "symbol");
         if (code == null || code.length() < 6) return null;
         char first = code.charAt(0);
-        if (first == '6' || first == '9') return "SH";
-        if (first == '0' || first == '2' || first == '3') return "SZ";
-        if (first == '8' || first == '4') return "BJ";
+        if (first == '6') return "SH";                              // 沪市 A股/科创板 600/601/603/605/688/689
+        if (first == '9') return code.startsWith("920") ? "BJ" : "SH"; // 920 北交所新代码段 / 900 沪B(数据源无B股，兜底SH)
+        if (first == '0' || first == '2' || first == '3') return "SZ"; // 深市主板/中小板/创业板
+        if (first == '8' || first == '4') return "BJ";              // 北交所老代码段 43x/83x/87x
         return null;
     }
 

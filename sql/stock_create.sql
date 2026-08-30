@@ -5,13 +5,12 @@ CREATE TABLE `stock` (
                          `stock_code` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '股票代码',
                          `stock_name` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '股票名称',
                          `market` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '市场：SH / SZ / BJ / HK / US',
-                         `industry_name` varchar(300) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT '' COMMENT '行业全路径(冗余)',
                          `pe_ratio` decimal(18,4) DEFAULT NULL COMMENT '市盈率PE',
-                         `total_market_cap` decimal(24,4) DEFAULT NULL COMMENT '总市值',
                          `circ_market_cap` decimal(24,4) DEFAULT NULL COMMENT '流通市值',
                          `current_price` decimal(12,4) DEFAULT NULL COMMENT '现价',
                          `change_rate` decimal(10,4) DEFAULT NULL COMMENT '涨跌幅(%)',
                          `price_change` decimal(10,4) DEFAULT NULL COMMENT '涨跌额',
+                         `speed` decimal(10,4) DEFAULT NULL COMMENT '涨速(%)',
                          `turnover_rate` decimal(10,4) DEFAULT NULL COMMENT '换手率(%)',
                          `volume_ratio` decimal(10,4) DEFAULT NULL COMMENT '量比',
                          `amplitude` decimal(10,4) DEFAULT NULL COMMENT '振幅(%)',
@@ -68,10 +67,10 @@ CREATE TABLE `stock_group` (
 -- `ry-vue`.stock_group_stock 定义
 
 CREATE TABLE `stock_group_stock` (
-                                     `group_id` bigint NOT NULL,
-                                     `stock_id` bigint NOT NULL,
-                                     PRIMARY KEY (`group_id`,`stock_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+                                     `group_id` bigint NOT NULL COMMENT '分组ID',
+                                     `stock_code` varchar(20) NOT NULL COMMENT '股票代码',
+                                     PRIMARY KEY (`group_id`,`stock_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='股票分组-股票关联表';
 
 
 -- `ry-vue`.stock_indicator 定义
@@ -159,9 +158,7 @@ CREATE TABLE `stock_plate` (
                                `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键',
                                `plate_name` varchar(100) NOT NULL COMMENT '板块名称',
                                `plate_type` varchar(20) NOT NULL COMMENT '板块类型（INDUSTRY 行业 / CONCEPT 概念）',
-                               `parent_id` bigint DEFAULT NULL COMMENT '父板块ID',
-                               `ancestors` varchar(500) DEFAULT '' COMMENT '祖级列表',
-                               `level` tinyint NOT NULL COMMENT '层级（1/2/3）',
+                               `plate_code` varchar(20) DEFAULT NULL COMMENT '同花顺板块代码',
                                `sort_order` int DEFAULT '0' COMMENT '排序',
                                `focus_flag` tinyint NOT NULL DEFAULT 0 COMMENT '是否需要重点关注(1需要 0不需要)',
                                `create_by` varchar(64) DEFAULT '' COMMENT '创建者',
@@ -170,17 +167,15 @@ CREATE TABLE `stock_plate` (
                                `update_time` datetime DEFAULT NULL COMMENT '更新时间',
                                `remark` varchar(500) DEFAULT NULL COMMENT '备注',
                                PRIMARY KEY (`id`),
-                               UNIQUE KEY `uk_plate_name_type_parent` (`plate_name`,`plate_type`,`parent_id`)
+                               UNIQUE KEY `uk_plate_name_type` (`plate_name`,`plate_type`)
 ) ENGINE=InnoDB AUTO_INCREMENT=89 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='股票板块/概念字典表';
 
 
 -- `ry-vue`.stock_plate_stock 定义
 
 CREATE TABLE `stock_plate_stock` (
-                                     `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键',
-                                     `plate_id` bigint NOT NULL COMMENT '板块ID',
-                                     `stock_id` bigint NOT NULL COMMENT '股票ID',
-                                     PRIMARY KEY (`id`),
-                                     UNIQUE KEY `uk_plate_stock` (`plate_id`,`stock_id`),
-                                     KEY `idx_stock_id` (`stock_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=18472 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='板块/概念-股票关联表';
+                                     `plate_code` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '板块代码',
+                                     `stock_code` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '股票代码',
+                                     PRIMARY KEY (`plate_code`,`stock_code`),
+                                     KEY `idx_stock_code` (`stock_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='板块/概念-股票关联表';

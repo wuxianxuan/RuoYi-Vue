@@ -102,10 +102,10 @@ public class StockPlateController extends BaseController {
     /**
      * 获取板块下的股票列表（分页）
      */
-    @GetMapping("/{id}/stocks")
-    public TableDataInfo getStocks(@PathVariable Long id) {
+    @GetMapping("/{plateCode}/stocks")
+    public TableDataInfo getStocks(@PathVariable String plateCode) {
         startPage();
-        List<Stock> list = stockPlateService.selectPlateStocks(id);
+        List<Stock> list = stockPlateService.selectPlateStocks(plateCode);
         return getDataTable(list);
     }
 
@@ -113,18 +113,18 @@ public class StockPlateController extends BaseController {
      * 批量添加股票到板块
      */
     @Log(title = "板块管理", businessType = BusinessType.UPDATE)
-    @PostMapping("/{id}/stocks")
-    public AjaxResult addStocks(@PathVariable Long id, @RequestBody Long[] stockIds) {
-        return toAjax(stockPlateService.insertPlateStocks(id, stockIds));
+    @PostMapping("/{plateCode}/stocks")
+    public AjaxResult addStocks(@PathVariable String plateCode, @RequestBody String[] stockCodes) {
+        return toAjax(stockPlateService.insertPlateStocks(plateCode, stockCodes));
     }
 
     /**
      * 从板块中移除股票
      */
     @Log(title = "板块管理", businessType = BusinessType.UPDATE)
-    @DeleteMapping("/{id}/stocks")
-    public AjaxResult removeStocks(@PathVariable Long id, @RequestBody Long[] stockIds) {
-        return toAjax(stockPlateService.deletePlateStocks(id, stockIds));
+    @DeleteMapping("/{plateCode}/stocks")
+    public AjaxResult removeStocks(@PathVariable String plateCode, @RequestBody String[] stockCodes) {
+        return toAjax(stockPlateService.deletePlateStocks(plateCode, stockCodes));
     }
 
     /**

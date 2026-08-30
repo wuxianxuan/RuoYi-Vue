@@ -39,40 +39,35 @@ public interface IStockPlateService {
     public int deletePlateByIds(Long[] ids);
 
     /**
-     * 查询所有行业板块（扁平列表，供前端构建树）
+     * 查询所有行业板块（扁平列表，平铺一级）
      */
     public List<StockPlate> selectIndustryPlateList();
 
     /**
-     * 查询所有概念板块（扁平列表，供前端展示）
+     * 查询所有概念板块（扁平列表，平铺一级）
      */
     public List<StockPlate> selectConceptPlateList();
 
     /**
-     * 是否存在子板块
-     */
-    public boolean hasChildByParentId(Long parentId);
-
-    /**
      * 查询板块下的股票列表
      */
-    public List<Stock> selectPlateStocks(Long plateId);
+    public List<Stock> selectPlateStocks(String plateCode);
 
     /**
      * 批量添加股票到板块
      */
-    public int insertPlateStocks(Long plateId, Long[] stockIds);
+    public int insertPlateStocks(String plateCode, String[] stockCodes);
 
     /**
      * 批量从板块移除股票
      */
-    public int deletePlateStocks(Long plateId, Long[] stockIds);
+    public int deletePlateStocks(String plateCode, String[] stockCodes);
 
     /**
      * 解析粘贴的股票代码文本
      *
      * @param text 粘贴的文本
-     * @return { matched: [{id, stockCode, stockName}], unmatched: [String] }
+     * @return { matched: [{stockCode, stockName}], unmatched: [String] }
      */
     public Map<String, Object> parseStockCodes(String text);
 }

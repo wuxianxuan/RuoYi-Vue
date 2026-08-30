@@ -37,10 +37,10 @@ public class StockGroupServiceImpl implements IStockGroupService
     public int insertGroup(StockGroup stockGroup)
     {
         int rows = stockGroupMapper.insertGroup(stockGroup);
-        Long[] stockIds = stockGroup.getStockIds();
-        if (stockIds != null && stockIds.length > 0)
+        String[] stockCodes = stockGroup.getStockCodes();
+        if (stockCodes != null && stockCodes.length > 0)
         {
-            stockGroupMapper.insertGroupStocks(stockGroup.getId(), stockIds);
+            stockGroupMapper.insertGroupStocks(stockGroup.getId(), stockCodes);
         }
         return rows;
     }
@@ -51,10 +51,10 @@ public class StockGroupServiceImpl implements IStockGroupService
     {
         int rows = stockGroupMapper.updateGroup(stockGroup);
         stockGroupMapper.deleteGroupStocksByGroupId(stockGroup.getId());
-        Long[] stockIds = stockGroup.getStockIds();
-        if (stockIds != null && stockIds.length > 0)
+        String[] stockCodes = stockGroup.getStockCodes();
+        if (stockCodes != null && stockCodes.length > 0)
         {
-            stockGroupMapper.insertGroupStocks(stockGroup.getId(), stockIds);
+            stockGroupMapper.insertGroupStocks(stockGroup.getId(), stockCodes);
         }
         return rows;
     }
@@ -77,21 +77,21 @@ public class StockGroupServiceImpl implements IStockGroupService
     }
 
     @Override
-    public int insertGroupStocks(Long groupId, Long[] stockIds)
+    public int insertGroupStocks(Long groupId, String[] stockCodes)
     {
-        if (stockIds != null && stockIds.length > 0)
+        if (stockCodes != null && stockCodes.length > 0)
         {
-            return stockGroupMapper.insertGroupStocks(groupId, stockIds);
+            return stockGroupMapper.insertGroupStocks(groupId, stockCodes);
         }
         return 0;
     }
 
     @Override
-    public int deleteGroupStocks(Long groupId, Long[] stockIds)
+    public int deleteGroupStocks(Long groupId, String[] stockCodes)
     {
-        if (stockIds != null && stockIds.length > 0)
+        if (stockCodes != null && stockCodes.length > 0)
         {
-            return stockGroupMapper.deleteGroupStocks(groupId, stockIds);
+            return stockGroupMapper.deleteGroupStocks(groupId, stockCodes);
         }
         return 0;
     }

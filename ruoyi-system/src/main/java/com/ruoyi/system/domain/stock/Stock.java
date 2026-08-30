@@ -21,60 +21,78 @@ public class Stock extends BaseEntity
     private Long id;
 
     /** 股票代码 */
-    @Excel(name = "股票代码")
+    @Excel(name = "股票代码", sort = 1)
     private String stockCode;
 
     /** 股票名称 */
-    @Excel(name = "股票名称")
+    @Excel(name = "股票名称", sort = 2)
     private String stockName;
 
     /** 市场：SH / SZ / BJ / HK / US */
-    @Excel(name = "市场：SH / SZ / BJ / HK / US")
+    @Excel(name = "市场", sort = 3)
     private String market;
 
-    /** 行业全路径（冗余字段） */
-    @Excel(name = "行业")
+    /** 行业名称（非持久化，联表 stock_plate_stock 填充，取叶子行业名） */
+    @Excel(name = "行业", sort = 4)
     private String industryName;
-
-    /** 市盈率（PE） */
-    private BigDecimal peRatio;
-
-    /** 总市值 */
-    private BigDecimal totalMarketCap;
-
-    /** 流通市值 */
-    private BigDecimal circMarketCap;
-
-    /** 现价 */
-    private BigDecimal currentPrice;
-
-    /** 涨跌幅(%) */
-    private BigDecimal changeRate;
-
-    /** 涨跌额 */
-    private BigDecimal priceChange;
-
-    /** 换手率(%) */
-    private BigDecimal turnoverRate;
-
-    /** 量比 */
-    private BigDecimal volumeRatio;
-
-    /** 振幅(%) */
-    private BigDecimal amplitude;
-
-    /** 成交额 */
-    private BigDecimal turnoverAmount;
-
-    /** 流通股 */
-    private BigDecimal circulatingShares;
 
     /** 概念名称列表（非持久化，列表展示用） */
     private List<String> conceptNames;
 
     /** 概念名称（顿号拼接，用于导出） */
-    @Excel(name = "概念", width = 30)
+    @Excel(name = "概念", width = 30, sort = 5)
     private String conceptNamesStr;
+
+    /** 所属分组名称列表（非持久化，联表 stock_group_stock 填充） */
+    private List<String> groupNames;
+
+    /** 所属分组名称（顿号拼接，用于导出） */
+    @Excel(name = "所属分组", width = 20, sort = 6)
+    private String groupNamesStr;
+
+    /** 现价 */
+    @Excel(name = "现价", sort = 7)
+    private BigDecimal currentPrice;
+
+    /** 涨跌幅(%) */
+    @Excel(name = "涨跌幅(%)", sort = 8)
+    private BigDecimal changeRate;
+
+    /** 涨跌 */
+    @Excel(name = "涨跌", sort = 9)
+    private BigDecimal priceChange;
+
+    /** 涨速(%) */
+    @Excel(name = "涨速(%)", sort = 10)
+    private BigDecimal speed;
+
+    /** 换手率(%) */
+    @Excel(name = "换手(%)", sort = 11)
+    private BigDecimal turnoverRate;
+
+    /** 量比 */
+    @Excel(name = "量比", sort = 12)
+    private BigDecimal volumeRatio;
+
+    /** 振幅(%) */
+    @Excel(name = "振幅(%)", sort = 13)
+    private BigDecimal amplitude;
+
+    /** 成交额 */
+    @Excel(name = "成交额", sort = 14)
+    private BigDecimal turnoverAmount;
+
+    /** 流通股 */
+    @Excel(name = "流通股", sort = 15)
+    private BigDecimal circulatingShares;
+
+    /** 流通市值 */
+    @Excel(name = "流通市值", sort = 16)
+    private BigDecimal circMarketCap;
+
+    /** 市盈率（PE） */
+    @Excel(name = "市盈率", sort = 17)
+    private BigDecimal peRatio;
 
     /** 行业筛选参数（非持久化，支持多选） */
     private Long[] industryIds;
@@ -151,16 +169,6 @@ public class Stock extends BaseEntity
         return peRatio;
     }
 
-    public void setTotalMarketCap(BigDecimal totalMarketCap)
-    {
-        this.totalMarketCap = totalMarketCap;
-    }
-
-    public BigDecimal getTotalMarketCap()
-    {
-        return totalMarketCap;
-    }
-
     public void setCircMarketCap(BigDecimal circMarketCap)
     {
         this.circMarketCap = circMarketCap;
@@ -179,6 +187,9 @@ public class Stock extends BaseEntity
 
     public void setPriceChange(BigDecimal priceChange) { this.priceChange = priceChange; }
     public BigDecimal getPriceChange() { return priceChange; }
+
+    public void setSpeed(BigDecimal speed) { this.speed = speed; }
+    public BigDecimal getSpeed() { return speed; }
 
     public void setTurnoverRate(BigDecimal turnoverRate) { this.turnoverRate = turnoverRate; }
     public BigDecimal getTurnoverRate() { return turnoverRate; }
@@ -213,6 +224,26 @@ public class Stock extends BaseEntity
     public void setConceptNamesStr(String conceptNamesStr)
     {
         this.conceptNamesStr = conceptNamesStr;
+    }
+
+    public List<String> getGroupNames()
+    {
+        return groupNames;
+    }
+
+    public void setGroupNames(List<String> groupNames)
+    {
+        this.groupNames = groupNames;
+    }
+
+    public String getGroupNamesStr()
+    {
+        return groupNamesStr;
+    }
+
+    public void setGroupNamesStr(String groupNamesStr)
+    {
+        this.groupNamesStr = groupNamesStr;
     }
 
     public Long[] getIndustryIds()
@@ -274,7 +305,6 @@ public class Stock extends BaseEntity
                 .append("market", getMarket())
                 .append("industryName", getIndustryName())
                 .append("peRatio", getPeRatio())
-                .append("totalMarketCap", getTotalMarketCap())
                 .append("circMarketCap", getCircMarketCap())
                 .append("currentPrice", getCurrentPrice())
                 .append("changeRate", getChangeRate())

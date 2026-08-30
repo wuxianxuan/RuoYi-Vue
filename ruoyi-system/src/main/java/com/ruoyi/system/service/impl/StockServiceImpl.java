@@ -5,6 +5,7 @@ import java.util.Map;
 
 import com.ruoyi.system.domain.stock.Stock;
 import com.ruoyi.common.utils.DateUtils;
+import com.ruoyi.system.mapper.StockGroupMapper;
 import com.ruoyi.system.mapper.StockPlateMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,8 @@ public class StockServiceImpl implements IStockService
     private StockMapper stockMapper;
     @Autowired
     private StockPlateMapper stockPlateMapper;
+    @Autowired
+    private StockGroupMapper stockGroupMapper;
 
     /**
      * 查询股票基础
@@ -47,20 +50,48 @@ public class StockServiceImpl implements IStockService
     public List<Stock> selectStockList(Stock stock)
     {
         List<Stock> list = stockMapper.selectStockList(stock);
-        // 分页后二次查询填充概念名称
+        // 分页后二次查询填充概念/行业名称
         if (list != null && !list.isEmpty()) {
-            List<Long> stockIds = list.stream().map(Stock::getId).collect(java.util.stream.Collectors.toList());
-            List<Map<String, Object>> conceptMappings = stockPlateMapper.selectConceptNamesByStockIds(stockIds);
-            Map<Long, List<String>> conceptMap = new java.util.HashMap<>();
+            List<String> stockCodes = list.stream().map(Stock::getStockCode).collect(java.util.stream.Collectors.toList());
+
+            // 概念名称（联表 stock_plate_stock）
+            List<Map<String, Object>> conceptMappings = stockPlateMapper.selectConceptNamesByStockCodes(stockCodes);
+            Map<String, List<String>> conceptMap = new java.util.HashMap<>();
             for (Map<String, Object> mapping : conceptMappings) {
-                Long stockId = ((Number) mapping.get("stockId")).longValue();
+                String stockCode = (String) mapping.get("stockCode");
                 String conceptName = (String) mapping.get("conceptName");
-                conceptMap.computeIfAbsent(stockId, k -> new java.util.ArrayList<>()).add(conceptName);
+                conceptMap.computeIfAbsent(stockCode, k -> new java.util.ArrayList<>()).add(conceptName);
             }
+
+            // 行业名称（联表 stock_plate_stock，取叶子行业名）
+            List<Map<String, Object>> industryMappings = stockPlateMapper.selectIndustryNamesByStockCodes(stockCodes);
+            Map<String, List<String>> industryMap = new java.util.HashMap<>();
+            for (Map<String, Object> mapping : industryMappings) {
+                String stockCode = (String) mapping.get("stockCode");
+                String industryName = (String) mapping.get("industryName");
+                industryMap.computeIfAbsent(stockCode, k -> new java.util.ArrayList<>()).add(industryName);
+            }
+
+            // 所属分组名称（联表 stock_group_stock）
+            List<Map<String, Object>> groupMappings = stockGroupMapper.selectGroupNamesByStockCodes(stockCodes);
+            Map<String, List<String>> groupMap = new java.util.HashMap<>();
+            for (Map<String, Object> mapping : groupMappings) {
+                String stockCode = (String) mapping.get("stockCode");
+                String groupName = (String) mapping.get("groupName");
+                groupMap.computeIfAbsent(stockCode, k -> new java.util.ArrayList<>()).add(groupName);
+            }
+
             for (Stock s : list) {
-                List<String> names = conceptMap.getOrDefault(s.getId(), java.util.Collections.emptyList());
+                List<String> names = conceptMap.getOrDefault(s.getStockCode(), java.util.Collections.emptyList());
                 s.setConceptNames(names);
                 s.setConceptNamesStr(String.join("、", names));
+
+                List<String> industryNames = industryMap.getOrDefault(s.getStockCode(), java.util.Collections.emptyList());
+                s.setIndustryName(industryNames.isEmpty() ? null : String.join("、", industryNames));
+
+                List<String> groupNames = groupMap.getOrDefault(s.getStockCode(), java.util.Collections.emptyList());
+                s.setGroupNames(groupNames);
+                s.setGroupNamesStr(String.join("、", groupNames));
             }
         }
         return list;
@@ -123,18 +154,18 @@ public class StockServiceImpl implements IStockService
     }
 
     @Override
-    public Long[] selectGroupIdsByStockId(Long stockId)
+    public Long[] selectGroupIdsByStockCode(String stockCode)
     {
-        return stockMapper.selectGroupIdsByStockId(stockId);
+        return stockMapper.selectGroupIdsByStockCode(stockCode);
     }
 
     @Override
-    public int insertStockGroups(Long stockId, Long[] groupIds)
+    public int insertStockGroups(String stockCode, Long[] groupIds)
     {
-        stockMapper.deleteStockGroupsByStockId(stockId);
+        stockMapper.deleteStockGroupsByStockCode(stockCode);
         if (groupIds != null && groupIds.length > 0)
         {
-            return stockMapper.insertStockGroups(stockId, groupIds);
+            return stockMapper.insertStockGroups(stockCode, groupIds);
         }
         return 0;
     }

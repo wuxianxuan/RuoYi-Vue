@@ -71,19 +71,19 @@ public interface IStockService
     /**
      * 查询股票所属的分组ID列表
      *
-     * @param stockId 股票ID
+     * @param stockCode 股票代码
      * @return 分组ID数组
      */
-    public Long[] selectGroupIdsByStockId(Long stockId);
+    public Long[] selectGroupIdsByStockCode(String stockCode);
 
     /**
      * 将股票关联到分组
      *
-     * @param stockId 股票ID
+     * @param stockCode 股票代码
      * @param groupIds 分组ID数组
      * @return 结果
      */
-    public int insertStockGroups(Long stockId, Long[] groupIds);
+    public int insertStockGroups(String stockCode, Long[] groupIds);
 
     /**
      * 根据股票代码前缀匹配股票（仅SH/SZ市场，最多10条）

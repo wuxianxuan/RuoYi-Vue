@@ -7,6 +7,7 @@ import java.util.Map;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.ruoyi.common.annotation.Excel;
 
 /**
  * Entity基类
@@ -36,6 +37,7 @@ public class BaseEntity implements Serializable
     private Date updateTime;
 
     /** 备注 */
+    @Excel(name = "备注")
     private String remark;
 
     /** 请求参数 */

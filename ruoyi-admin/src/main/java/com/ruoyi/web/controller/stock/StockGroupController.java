@@ -94,9 +94,9 @@ public class StockGroupController extends BaseController
      */
     @Log(title = "股票分组", businessType = BusinessType.UPDATE)
     @PostMapping("/{id}/stocks")
-    public AjaxResult addStocks(@PathVariable Long id, @RequestBody Long[] stockIds)
+    public AjaxResult addStocks(@PathVariable Long id, @RequestBody String[] stockCodes)
     {
-        return toAjax(stockGroupService.insertGroupStocks(id, stockIds));
+        return toAjax(stockGroupService.insertGroupStocks(id, stockCodes));
     }
 
     /**
@@ -104,9 +104,9 @@ public class StockGroupController extends BaseController
      */
     @Log(title = "股票分组", businessType = BusinessType.UPDATE)
     @DeleteMapping("/{id}/stocks")
-    public AjaxResult removeStocks(@PathVariable Long id, @RequestBody Long[] stockIds)
+    public AjaxResult removeStocks(@PathVariable Long id, @RequestBody String[] stockCodes)
     {
-        return toAjax(stockGroupService.deleteGroupStocks(id, stockIds));
+        return toAjax(stockGroupService.deleteGroupStocks(id, stockCodes));
     }
 
     /**

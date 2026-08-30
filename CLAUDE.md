@@ -57,19 +57,20 @@ IdeaProjects/
 - **数据来源**: 行业树用 `listIndustryTree()` (调用 `/stock/plate/tree`)，概念下拉用 `listPlate({ plateType: 'concept' })`
 - **后端支持**: `listExcludeStocks` 的 Controller 方法接收 `Stock` 对象，所有 `Stock` 上的筛选字段自动生效；注意新增字段时必须同步更新 `Stock.java` 和 `StockMapper.xml` 的 `selectStockList` / `selectStocksNotInGroup`
 
-### 2. 行业名称同步
-- `stock.industry_name` 字段由 `IStockPlateService.insertPlateStocks()` / `deletePlateStocks()` 自动维护
-- 直接操作 `stockPlateMapper` 绕过 Service 层会**不会**更新 `industry_name`
-- 定时任务 `StockPlateInfoSyncTask` 已改为使用 `IStockPlateService` 来保证 `industry_name` 同步
+### 2. 行业/概念名称来源
+- `stock` 表已去掉 `industry_name` 冗余列，行业/概念均通过 `stock_plate_stock` 联表 `stock_plate` 实时获取
+- `StockServiceImpl.selectStockList` 分页后二次查询：`selectConceptNamesByStockCodes`（概念）、`selectIndustryNamesByStockCodes`（行业，取叶子名）填充 `conceptNames` / `industryName`
+- 行业/概念筛选通过 `StockMapper.xml` 中 `stock_plate_stock` + `stock_plate` 的 `EXISTS` 子查询实现，不依赖冗余列
 
 ### 3. 板块类型
 - `INDUSTRY`: 行业板块（同花顺代码以 `881xxx` 或 `884xxx` 开头）
 - `CONCEPT`: 概念板块（同花顺代码以 `885xxx` 或 `886xxx` 开头）
-- `stock_plate.remark` 字段用于存储同花顺板块代码
+- `stock_plate.plate_code` 字段用于存储同花顺板块代码
+- 行业与概念均平铺一级、无父子层级（不再有 `parent_id`/`ancestors`/`level`）
 
 ### 4. 字段命名注意事项
 - `StockPlate` 的板块名称字段是 `plateName`（非 `industryName`）
-- 前端 tree-select 的 `:props` 中 label 必须配置为 `plateName`
+- 行业/概念筛选下拉均为平铺，`label` 配置为 `plateName`
 
 ### 5. 后端 API 参数传递
 - 列表查询接口（如 `/stock/base/list`）直接接收 `Stock` 对象作为 query params

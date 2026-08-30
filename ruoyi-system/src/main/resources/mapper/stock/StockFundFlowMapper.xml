@@ -9,7 +9,7 @@
         <result property="plateType" column="plate_type" />
         <result property="tradeDate" column="trade_date" />
         <result property="tradeName" column="trade_name" />
-        <result property="code"      column="code"       />
+        <result property="url"       column="url"        />
         <result property="price"     column="price"      />
         <result property="tradeZdf"  column="trade_zdf"  />
         <result property="buy"       column="buy"        />
@@ -20,13 +20,32 @@
 
     <insert id="batchInsertIgnore" parameterType="java.util.List">
         insert ignore into stock_fund_flow (
-            plate_type, trade_date, trade_name, code,
+            plate_type, trade_date, trade_name, url,
             price, trade_zdf, buy, sell, je, total
         ) values
         <foreach collection="list" item="item" separator=",">
-            (#{item.plateType}, #{item.tradeDate}, #{item.tradeName}, #{item.code},
+            (#{item.plateType}, #{item.tradeDate}, #{item.tradeName}, #{item.url},
              #{item.price}, #{item.tradeZdf}, #{item.buy}, #{item.sell}, #{item.je}, #{item.total})
         </foreach>
     </insert>
+
+    <select id="selectRecentTradeDates" resultType="java.util.Date">
+        select distinct trade_date
+        from stock_fund_flow
+        where plate_type = #{plateType}
+        order by trade_date desc
+        limit #{limit}
+    </select>
+
+    <select id="selectByPlateTypeAndDates" resultMap="StockFundFlowResult">
+        select id, plate_type, trade_date, trade_name, url, price, trade_zdf, buy, sell, je, total
+        from stock_fund_flow
+        where plate_type = #{plateType}
+        and trade_date in
+        <foreach collection="dates" item="date" open="(" separator="," close=")">
+            #{date}
+        </foreach>
+        order by trade_date asc
+    </select>
 
 </mapper>
