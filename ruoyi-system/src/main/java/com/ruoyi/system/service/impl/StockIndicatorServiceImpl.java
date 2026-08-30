@@ -326,7 +326,7 @@ public class StockIndicatorServiceImpl implements IStockIndicatorService
     }
 
     /**
-     * 趋势斜率 — 线性回归（与 StockTrendReversalTask 使用相同的算法）
+     * 趋势斜率 — 线性回归
      */
     private BigDecimal[] calcTrendSlope(List<BigDecimal> closes)
     {

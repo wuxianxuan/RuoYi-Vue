@@ -179,30 +179,3 @@ CREATE TABLE `stock_plate_stock` (
                                      UNIQUE KEY `uk_plate_stock` (`plate_id`,`stock_id`),
                                      KEY `idx_stock_id` (`stock_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=18472 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='板块/概念-股票关联表';
-
-
--- `ry-vue`.stock_recommend 定义
-
-CREATE TABLE `stock_recommend` (
-                                   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键',
-                                   `recommend_date` date NOT NULL COMMENT '推荐日期',
-                                   `stock_id` bigint NOT NULL COMMENT '股票ID',
-                                   `stock_code` varchar(20) NOT NULL COMMENT '股票代码',
-                                   `stock_name` varchar(50) DEFAULT '' COMMENT '股票名称',
-                                   `total_score` decimal(10,4) DEFAULT '0.0000' COMMENT '综合得分',
-                                   `trend_score` decimal(10,4) DEFAULT '0.0000' COMMENT '趋势得分',
-                                   `plate_score` decimal(10,4) DEFAULT '0.0000' COMMENT '板块得分',
-                                   `fund_score` decimal(10,4) DEFAULT '0.0000' COMMENT '资金得分（预留）',
-                                   `base_score` decimal(10,4) DEFAULT '0.0000' COMMENT '基本面得分（预留）',
-                                   `reason` varchar(500) DEFAULT '' COMMENT '推荐理由',
-                                   `status` char(1) DEFAULT '0' COMMENT '状态（0待确认 1已确认 2已驳回）',
-                                   `create_by` varchar(64) DEFAULT 'system' COMMENT '创建者',
-                                   `create_time` datetime DEFAULT NULL COMMENT '创建时间',
-                                   `update_by` varchar(64) DEFAULT 'system' COMMENT '更新者',
-                                   `update_time` datetime DEFAULT NULL COMMENT '更新时间',
-                                   `remark` varchar(500) DEFAULT NULL COMMENT '备注',
-                                   PRIMARY KEY (`id`),
-                                   KEY `idx_recommend_date` (`recommend_date`),
-                                   KEY `idx_stock_id` (`stock_id`),
-                                   KEY `idx_stock_code` (`stock_code`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='股票推荐结果表';

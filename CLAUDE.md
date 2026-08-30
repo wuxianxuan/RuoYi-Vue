@@ -21,7 +21,6 @@ IdeaProjects/
 │   ├── ruoyi-quartz/    # 定时任务
 │   │   └── src/main/java/com/ruoyi/quartz/task/
 │   │       ├── StockPlateInfoSyncTask.java  # 同花顺板块/概念同步
-│   │       ├── StockTrendReversalTask.java  # 趋势反转检测
 │   │       ├── StockKlineSyncTask.java      # K线同步
 │   │       └── StockDataCollectTask.java    # 数据采集
 │   ├── ruoyi-common/    # 工具类
