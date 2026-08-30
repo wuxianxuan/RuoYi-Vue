@@ -34,7 +34,7 @@ server:
 # 日志配置
 logging:
   level:
-    com.ruoyi: debug
+    com.ruoyi: info
     org.springframework: warn
 
 # 用户配置
@@ -78,7 +78,7 @@ spring:
       # 数据库索引
       database: 0
       # 密码
-      password:
+      password: wxx201233
       # 连接超时时间
       timeout: 10s
       lettuce:
@@ -170,7 +170,7 @@ stock:
   # 推荐引擎配置
   recommend:
     # 每个重点板块取几只「值得入场」股票
-    top-stocks: 10
+    top-stocks: 18
     # 生成分组名前缀
     group-prefix: 入场
     # 换手率阈值（%，按百分比数值理解，如 3.5 表示 3.5%）

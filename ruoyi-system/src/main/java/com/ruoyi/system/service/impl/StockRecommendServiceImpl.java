@@ -44,7 +44,7 @@ public class StockRecommendServiceImpl implements IStockRecommendService
     private IStockLimitUpStatService stockLimitUpStatService;
 
     /** 每个重点板块最终取几只股票 */
-    @Value("${stock.recommend.top-stocks:12}")
+    @Value("${stock.recommend.top-stocks:18}")
     private int topStocks;
 
     /** 涨停数下限：仅保留涨停数 >= 该值的股票 */
