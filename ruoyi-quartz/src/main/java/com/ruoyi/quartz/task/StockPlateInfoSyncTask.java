@@ -81,6 +81,10 @@ public class StockPlateInfoSyncTask
     @Value("${stock.blockrank.fullReplace:true}")
     private boolean fullReplace;
 
+    /** 已关联股票的板块每次随机抽取更新的数量（<=0 表示全部跳过，避免全量请求被反爬） */
+    @Value("${stock.blockrank.associatedSampleSize:10}")
+    private int associatedSampleSize;
+
     // ==================== 对外调用入口 ====================
 
     /**
@@ -107,11 +111,50 @@ public class StockPlateInfoSyncTask
             log.warn("stock_plate 中没有带 plate_code 的板块，跳过同步");
             return;
         }
-        log.info("从 stock_plate 读取 {} 个板块，其中 {} 个带 plate_code 需同步",
+        log.info("从 stock_plate 读取 {} 个板块，其中 {} 个带 plate_code",
                 plates.size(), syncPlates.size());
 
+        // 3. 查询已存在股票关联的 plate_code，用于区分「未关联」与「已关联」板块
+        List<String> linkedCodes = stockPlateMapper.selectDistinctPlateCodesWithStocks();
+        Set<String> linkedPlateCodes = linkedCodes == null ? Collections.emptySet() : new HashSet<>(linkedCodes);
+
+        // 4. 未关联板块：优先全部同步；已关联板块：随机抽取少量同步，其余跳过避免反爬
+        List<StockPlate> unlinkedPlates = syncPlates.stream()
+                .filter(p -> !linkedPlateCodes.contains(p.getPlateCode()))
+                .collect(Collectors.toList());
+
+        List<StockPlate> linkedPlates = syncPlates.stream()
+                .filter(p -> linkedPlateCodes.contains(p.getPlateCode()))
+                .collect(Collectors.toList());
+
+        List<StockPlate> toSync = new ArrayList<>(unlinkedPlates);
+        int sampleSize = Math.max(0, associatedSampleSize);
+        if (!linkedPlates.isEmpty() && sampleSize > 0)
+        {
+            Collections.shuffle(linkedPlates, new Random());
+            List<StockPlate> sampled = linkedPlates.subList(0, Math.min(sampleSize, linkedPlates.size()));
+            toSync.addAll(sampled);
+            log.info("已关联板块 {} 个，本次随机抽取 {} 个更新: {}",
+                    linkedPlates.size(), sampled.size(),
+                    sampled.stream().map(StockPlate::getPlateCode).collect(Collectors.toList()));
+        }
+        else if (!linkedPlates.isEmpty())
+        {
+            log.info("已关联板块 {} 个，associatedSampleSize=0，本次全部跳过", linkedPlates.size());
+        }
+
+        if (toSync.isEmpty())
+        {
+            log.warn("没有需要同步的板块，跳过");
+            return;
+        }
+
+        log.info("本次待同步板块 {} 个（未关联 {} 个 + 已关联抽取 {} 个），跳过已关联板块 {} 个",
+                toSync.size(), unlinkedPlates.size(), toSync.size() - unlinkedPlates.size(),
+                syncPlates.size() - toSync.size());
+
         SyncResult totalResult = new SyncResult();
-        for (StockPlate plate : syncPlates)
+        for (StockPlate plate : toSync)
         {
             try
             {
@@ -131,7 +174,7 @@ public class StockPlateInfoSyncTask
             }
 
             // 请求间隔，避免被反爬
-            if (syncPlates.size() > 1)
+            if (toSync.size() > 1)
             {
                 try { Thread.sleep(500); }
                 catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }

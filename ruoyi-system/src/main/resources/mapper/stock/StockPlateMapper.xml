@@ -105,6 +105,11 @@
         </foreach>
     </delete>
 
+    <!-- 查询所有已存在股票关联的板块代码（去重） -->
+    <select id="selectDistinctPlateCodesWithStocks" resultType="String">
+        select distinct plate_code from stock_plate_stock
+    </select>
+
     <!-- 板块下的关联股票 -->
     <select id="selectPlateStocksByPlateCode" parameterType="String" resultMap="com.ruoyi.system.mapper.StockMapper.StockResult">
         select s.id, s.stock_code, s.stock_name, s.market,

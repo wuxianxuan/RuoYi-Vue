@@ -59,6 +59,11 @@ public interface StockPlateMapper {
     public List<Stock> selectPlateStocksByPlateCode(@Param("plateCode") String plateCode);
 
     /**
+     * 查询所有已存在股票关联的板块代码（去重）
+     */
+    public List<String> selectDistinctPlateCodesWithStocks();
+
+    /**
      * 批量添加板块-股票关联
      */
     public int insertPlateStocks(@Param("plateCode") String plateCode, @Param("stockCodes") String[] stockCodes);
