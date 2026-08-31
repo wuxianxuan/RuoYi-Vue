@@ -86,6 +86,36 @@
             <if test="minLimitUpCount != null">
                 and ifnull(ls.limit_up_count, 0) &gt;= #{minLimitUpCount}
             </if>
+            <if test="minCurrentPrice != null">
+                and s.current_price &gt;= #{minCurrentPrice}
+            </if>
+            <if test="maxCurrentPrice != null">
+                and s.current_price &lt;= #{maxCurrentPrice}
+            </if>
+            <if test="minChangeRate != null">
+                and s.change_rate &gt;= #{minChangeRate}
+            </if>
+            <if test="maxChangeRate != null">
+                and s.change_rate &lt;= #{maxChangeRate}
+            </if>
+            <if test="minTurnoverRate != null">
+                and s.turnover_rate &gt;= #{minTurnoverRate}
+            </if>
+            <if test="maxTurnoverRate != null">
+                and s.turnover_rate &lt;= #{maxTurnoverRate}
+            </if>
+            <if test="minVolumeRatio != null">
+                and s.volume_ratio &gt;= #{minVolumeRatio}
+            </if>
+            <if test="maxVolumeRatio != null">
+                and s.volume_ratio &lt;= #{maxVolumeRatio}
+            </if>
+            <if test="minTurnoverAmount != null">
+                and s.turnover_amount &gt;= #{minTurnoverAmount}
+            </if>
+            <if test="maxTurnoverAmount != null">
+                and s.turnover_amount &lt;= #{maxTurnoverAmount}
+            </if>
         </where>
         order by ifnull(ls.limit_up_count, 0) desc, s.stock_code asc
     </select>

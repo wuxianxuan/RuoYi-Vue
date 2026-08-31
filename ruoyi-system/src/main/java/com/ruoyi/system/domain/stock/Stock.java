@@ -109,6 +109,36 @@ public class Stock extends BaseEntity
     /** 涨停数下限筛选参数（非持久化，查询涨停数 >= 该值的数据） */
     private Integer minLimitUpCount;
 
+    /** 现价下限筛选参数（非持久化） */
+    private BigDecimal minCurrentPrice;
+
+    /** 现价上限筛选参数（非持久化） */
+    private BigDecimal maxCurrentPrice;
+
+    /** 涨跌幅下限筛选参数（非持久化） */
+    private BigDecimal minChangeRate;
+
+    /** 涨跌幅上限筛选参数（非持久化） */
+    private BigDecimal maxChangeRate;
+
+    /** 换手率下限筛选参数（非持久化） */
+    private BigDecimal minTurnoverRate;
+
+    /** 换手率上限筛选参数（非持久化） */
+    private BigDecimal maxTurnoverRate;
+
+    /** 量比下限筛选参数（非持久化） */
+    private BigDecimal minVolumeRatio;
+
+    /** 量比上限筛选参数（非持久化） */
+    private BigDecimal maxVolumeRatio;
+
+    /** 成交额下限筛选参数（非持久化） */
+    private BigDecimal minTurnoverAmount;
+
+    /** 成交额上限筛选参数（非持久化） */
+    private BigDecimal maxTurnoverAmount;
+
     public void setId(Long id)
     {
         this.id = id;
@@ -295,6 +325,36 @@ public class Stock extends BaseEntity
     {
         this.minLimitUpCount = minLimitUpCount;
     }
+
+    public BigDecimal getMinCurrentPrice() { return minCurrentPrice; }
+    public void setMinCurrentPrice(BigDecimal minCurrentPrice) { this.minCurrentPrice = minCurrentPrice; }
+
+    public BigDecimal getMaxCurrentPrice() { return maxCurrentPrice; }
+    public void setMaxCurrentPrice(BigDecimal maxCurrentPrice) { this.maxCurrentPrice = maxCurrentPrice; }
+
+    public BigDecimal getMinChangeRate() { return minChangeRate; }
+    public void setMinChangeRate(BigDecimal minChangeRate) { this.minChangeRate = minChangeRate; }
+
+    public BigDecimal getMaxChangeRate() { return maxChangeRate; }
+    public void setMaxChangeRate(BigDecimal maxChangeRate) { this.maxChangeRate = maxChangeRate; }
+
+    public BigDecimal getMinTurnoverRate() { return minTurnoverRate; }
+    public void setMinTurnoverRate(BigDecimal minTurnoverRate) { this.minTurnoverRate = minTurnoverRate; }
+
+    public BigDecimal getMaxTurnoverRate() { return maxTurnoverRate; }
+    public void setMaxTurnoverRate(BigDecimal maxTurnoverRate) { this.maxTurnoverRate = maxTurnoverRate; }
+
+    public BigDecimal getMinVolumeRatio() { return minVolumeRatio; }
+    public void setMinVolumeRatio(BigDecimal minVolumeRatio) { this.minVolumeRatio = minVolumeRatio; }
+
+    public BigDecimal getMaxVolumeRatio() { return maxVolumeRatio; }
+    public void setMaxVolumeRatio(BigDecimal maxVolumeRatio) { this.maxVolumeRatio = maxVolumeRatio; }
+
+    public BigDecimal getMinTurnoverAmount() { return minTurnoverAmount; }
+    public void setMinTurnoverAmount(BigDecimal minTurnoverAmount) { this.minTurnoverAmount = minTurnoverAmount; }
+
+    public BigDecimal getMaxTurnoverAmount() { return maxTurnoverAmount; }
+    public void setMaxTurnoverAmount(BigDecimal maxTurnoverAmount) { this.maxTurnoverAmount = maxTurnoverAmount; }
 
     @Override
     public String toString() {
