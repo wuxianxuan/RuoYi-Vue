@@ -34,6 +34,8 @@ import java.util.function.Function;
  * 排序评分：区间涨幅(趋势面)与累计净流入(资金面)在候选集内 min-max 归一化后加权求和，
  * 按综合分降序取前 topN 个板块。
  *
+ * 另附涨幅TOP逻辑：行业/概念各取当前涨幅(trade_zdf)前 topZdfN 个直接同步（不走资金/趋势门槛）。
+ *
  * 输出：按 (plate_type, trade_name) 匹配 stock_plate，
  *   - 已存在：更新备注为「yyyy-MM-dd推荐行业/概念」，focus_flag=1
  *   - 不存在：新建板块，备注为「yyyy-MM-dd推荐行业/概念+url」
@@ -90,13 +92,20 @@ public class StockFundFlowRecommendServiceImpl implements IStockFundFlowRecommen
     @Value("${stock.fund-flow-recommend.weight-fund:0.5}")
     private BigDecimal weightFund;
 
+    /** 涨幅TOP同步数量（每个类型取当前涨幅前 N 个，行业+概念共 2N 个） */
+    @Value("${stock.fund-flow-recommend.top-zdf-n:7}")
+    private int topZdfN;
+
     @Override
     public void execute()
     {
         log.info("========== 资金流向推荐引擎开始 ==========");
         int industryCount = recommend("INDUSTRY");
         int conceptCount = recommend("CONCEPT");
-        log.info("========== 资金流向推荐完成：行业 {} 个，概念 {} 个 ==========", industryCount, conceptCount);
+        int zdfIndustryCount = recommendTopZdf("INDUSTRY");
+        int zdfConceptCount = recommendTopZdf("CONCEPT");
+        log.info("========== 资金流向推荐完成：行业 {} 个，概念 {} 个；涨幅TOP行业 {} 个，概念 {} 个 ==========",
+                industryCount, conceptCount, zdfIndustryCount, zdfConceptCount);
     }
 
     // ==================== 推荐逻辑 ====================
@@ -172,7 +181,7 @@ public class StockFundFlowRecommendServiceImpl implements IStockFundFlowRecommen
         {
             try
             {
-                upsertPlate(plateType, c.name, c.url, typeLabel, dateStr);
+                upsertPlate(plateType, c.name, c.url, dateStr + "推荐" + typeLabel);
                 saved++;
                 log.info("   推荐[{}] {}：区间涨幅 {}%，连续 {} 日净流入，累计净额 {} 亿，综合分 {}",
                         plateType, c.name, c.trendPct, c.consecutive, c.netSum, c.score);
@@ -180,6 +189,64 @@ public class StockFundFlowRecommendServiceImpl implements IStockFundFlowRecommen
             catch (Exception e)
             {
                 log.error("   推荐[{}] {} 落库失败: {}", plateType, c.name, e.getMessage(), e);
+            }
+        }
+        return saved;
+    }
+
+    /**
+     * 将指定板块类型当前涨幅（trade_zdf）前 topZdfN 的板块直接同步到 stock_plate（不经过资金/趋势门槛）
+     *
+     * @param plateType INDUSTRY / CONCEPT
+     * @return 同步（落库）的板块数量
+     */
+    private int recommendTopZdf(String plateType)
+    {
+        String typeLabel = "INDUSTRY".equals(plateType) ? "行业" : "概念";
+        String dateStr = LocalDate.now().toString();
+
+        // 1. 取最新一个交易日
+        List<Date> dates = stockFundFlowMapper.selectRecentTradeDates(plateType, 1);
+        if (dates == null || dates.isEmpty())
+        {
+            log.warn("[{}] 无资金流向数据，跳过涨幅TOP同步", plateType);
+            return 0;
+        }
+
+        // 2. 取最新交易日数据
+        List<StockFundFlow> flows = stockFundFlowMapper.selectByPlateTypeAndDates(plateType, dates);
+        if (flows == null || flows.isEmpty())
+        {
+            log.warn("[{}] 最新交易日无数据，跳过涨幅TOP同步", plateType);
+            return 0;
+        }
+
+        // 3. 按涨跌幅降序取前 topZdfN
+        List<StockFundFlow> sorted = new ArrayList<>(flows);
+        sorted.sort((a, b) -> {
+            BigDecimal za = a.getTradeZdf();
+            BigDecimal zb = b.getTradeZdf();
+            if (za == null && zb == null) return 0;
+            if (za == null) return 1;
+            if (zb == null) return -1;
+            return zb.compareTo(za);
+        });
+        int n = Math.min(topZdfN, sorted.size());
+        List<StockFundFlow> top = sorted.subList(0, n);
+
+        // 4. 落库
+        int saved = 0;
+        for (StockFundFlow f : top)
+        {
+            try
+            {
+                upsertPlate(plateType, f.getTradeName(), f.getUrl(), dateStr + "涨幅TOP" + typeLabel);
+                saved++;
+                log.info("   涨幅TOP[{}] {}：涨跌幅 {}%", plateType, f.getTradeName(), f.getTradeZdf());
+            }
+            catch (Exception e)
+            {
+                log.error("   涨幅TOP[{}] {} 落库失败: {}", plateType, f.getTradeName(), e.getMessage(), e);
             }
         }
         return saved;
@@ -306,8 +373,10 @@ public class StockFundFlowRecommendServiceImpl implements IStockFundFlowRecommen
 
     /**
      * 按 (类型, 名称) 匹配 stock_plate 并更新/插入推荐记录
+     *
+     * @param remark 备注（不含 url，新建板块时会在末尾追加 url）
      */
-    private void upsertPlate(String plateType, String plateName, String url, String typeLabel, String dateStr)
+    private void upsertPlate(String plateType, String plateName, String url, String remark)
     {
         StockPlate existing = stockPlateMapper.selectPlateByNameAndType(plateName, plateType);
         if (existing != null)
@@ -315,7 +384,7 @@ public class StockFundFlowRecommendServiceImpl implements IStockFundFlowRecommen
             // 已存在：更新备注 + 置为重点关注
             StockPlate update = new StockPlate();
             update.setId(existing.getId());
-            update.setRemark(dateStr + "推荐" + typeLabel);
+            update.setRemark(remark);
             update.setFocusFlag(1);
             update.setUpdateBy("system");
             stockPlateService.updatePlate(update);
@@ -327,7 +396,7 @@ public class StockFundFlowRecommendServiceImpl implements IStockFundFlowRecommen
             StockPlate plate = new StockPlate();
             plate.setPlateName(plateName);
             plate.setPlateType(plateType);
-            plate.setRemark(dateStr + "推荐" + typeLabel + "+" + (url == null ? "" : url));
+            plate.setRemark(remark + (url == null ? "" : "+" + url));
             plate.setFocusFlag(1);
             plate.setCreateBy("system");
             stockPlateService.insertPlate(plate);
