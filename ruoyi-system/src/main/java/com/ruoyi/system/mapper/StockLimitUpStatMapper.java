@@ -6,7 +6,7 @@ import org.apache.ibatis.annotations.Param;
 import java.util.List;
 
 /**
- * 股票近2年涨停次数统计 Mapper
+ * 股票近30天涨停次数统计 Mapper
  */
 public interface StockLimitUpStatMapper {
 

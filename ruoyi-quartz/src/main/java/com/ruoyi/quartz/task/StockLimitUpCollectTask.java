@@ -47,9 +47,9 @@ public class StockLimitUpCollectTask {
         log.info("开始同步涨停数据: {} ~ {} ({}天)", request.getStartDate(), request.getEndDate(), n);
         stockLimitUpRecordService.syncLimitUpData(request);
 
-        // 采集完成后，重新统计近1年（不含最近7天）各股票涨停次数，供推荐引擎作为权重指标使用
-        String statStartDate = TradingDayUtils.getDateStr(now.minusDays(365 + 7));
-        String statEndDate = TradingDayUtils.getDateStr(now.minusDays(7));
+        // 采集完成后，重新统计近30天（含今天）各股票涨停次数，供推荐引擎作为权重指标使用
+        String statStartDate = TradingDayUtils.getDateStr(now.minusDays(30));
+        String statEndDate = TradingDayUtils.getDateStr(now);
         log.info("开始统计涨停次数 (统计区间 {} ~ {})", statStartDate, statEndDate);
         stockLimitUpStatService.rebuildStats(statStartDate, statEndDate);
     }

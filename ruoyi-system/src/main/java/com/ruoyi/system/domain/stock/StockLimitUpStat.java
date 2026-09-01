@@ -7,7 +7,7 @@ import lombok.EqualsAndHashCode;
 import java.util.Date;
 
 /**
- * 股票近2年涨停次数统计对象 stock_limit_up_stat
+ * 股票近30天涨停次数统计对象 stock_limit_up_stat
  *
  * @author ruoyi
  */
@@ -24,7 +24,7 @@ public class StockLimitUpStat extends BaseEntity {
     /** 股票名称 */
     private String stockName;
 
-    /** 近1年涨停次数（不含最近7天，按交易日去重） */
+    /** 近30天涨停次数（含今天，按交易日去重） */
     private Integer limitUpCount;
 
     /** 统计日期 */

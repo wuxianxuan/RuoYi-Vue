@@ -103,7 +103,7 @@ public class Stock extends BaseEntity
     /** 分组筛选参数（非持久化，支持多选） */
     private Long[] groupIds;
 
-    /** 涨停数（近1年，不含最近7天，列表展示用，非持久化） */
+    /** 涨停数（近30天，含今天，列表展示用，非持久化） */
     private Integer limitUpCount;
 
     /** 涨停数下限筛选参数（非持久化，查询涨停数 >= 该值的数据） */

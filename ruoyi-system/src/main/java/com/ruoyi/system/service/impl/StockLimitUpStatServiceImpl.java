@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 股票近1年（不含最近7天）涨停次数统计实现
+ * 股票近30天（含今天）涨停次数统计实现
  */
 @Service
 public class StockLimitUpStatServiceImpl implements IStockLimitUpStatService {
