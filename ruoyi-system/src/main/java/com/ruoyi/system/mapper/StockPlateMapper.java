@@ -97,4 +97,9 @@ public interface StockPlateMapper {
      * 按名称+类型精确查询板块
      */
     public StockPlate selectPlateByNameAndType(@Param("plateName") String plateName, @Param("plateType") String plateType);
+
+    /**
+     * 批量修改板块的重点关注标记
+     */
+    public int updateFocusFlagByIds(@Param("ids") Long[] ids, @Param("focusFlag") Integer focusFlag);
 }

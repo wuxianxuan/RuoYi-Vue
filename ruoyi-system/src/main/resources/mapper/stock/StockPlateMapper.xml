@@ -33,6 +33,9 @@
             <if test="plateType != null and plateType != ''">
                 AND plate_type = #{plateType}
             </if>
+            <if test="plateCode != null and plateCode != ''">
+                AND plate_code like concat('%', #{plateCode}, '%')
+            </if>
             <if test="focusFlag != null">
                 AND focus_flag = #{focusFlag}
             </if>
@@ -92,6 +95,15 @@
             update_time = sysdate()
         </set>
         where id = #{id}
+    </update>
+
+    <!-- 批量修改板块的重点关注标记 -->
+    <update id="updateFocusFlagByIds">
+        update stock_plate set focus_flag = #{focusFlag}, update_time = sysdate()
+        where id in
+        <foreach item="id" collection="ids" open="(" separator="," close=")">
+            #{id}
+        </foreach>
     </update>
 
     <delete id="deletePlateById" parameterType="Long">

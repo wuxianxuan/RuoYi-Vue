@@ -70,4 +70,12 @@ public interface IStockPlateService {
      * @return { matched: [{stockCode, stockName}], unmatched: [String] }
      */
     public Map<String, Object> parseStockCodes(String text);
+
+    /**
+     * 批量修改板块的重点关注标记
+     *
+     * @param ids       板块ID列表
+     * @param focusFlag 重点关注标记（1 需要 / 0 不需要）
+     */
+    public int updateFocusFlag(Long[] ids, Integer focusFlag);
 }

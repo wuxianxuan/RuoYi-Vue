@@ -95,6 +95,15 @@ public class StockPlateServiceImpl implements IStockPlateService {
         return stockPlateMapper.deletePlateStocks(plateCode, stockCodes);
     }
 
+    @Override
+    @Transactional
+    public int updateFocusFlag(Long[] ids, Integer focusFlag) {
+        if (ids == null || ids.length == 0 || focusFlag == null) {
+            return 0;
+        }
+        return stockPlateMapper.updateFocusFlagByIds(ids, focusFlag);
+    }
+
     // ==================== 股票代码解析 ====================
 
     /** 6位纯数字正则 */

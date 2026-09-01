@@ -135,4 +135,21 @@ public class StockPlateController extends BaseController {
         String text = params.get("text");
         return success(stockPlateService.parseStockCodes(text));
     }
+
+    /**
+     * 批量修改重点关注标记
+     */
+    @Log(title = "板块管理", businessType = BusinessType.UPDATE)
+    @PutMapping("/focus")
+    public AjaxResult updateFocus(@RequestBody Map<String, Object> params) {
+        Object idsObj = params.get("ids");
+        Object focusFlagObj = params.get("focusFlag");
+        if (idsObj == null || focusFlagObj == null) {
+            return AjaxResult.error("参数不完整");
+        }
+        List<?> idList = (List<?>) idsObj;
+        Long[] ids = idList.stream().map(i -> Long.valueOf(String.valueOf(i))).toArray(Long[]::new);
+        Integer focusFlag = Integer.valueOf(String.valueOf(focusFlagObj));
+        return toAjax(stockPlateService.updateFocusFlag(ids, focusFlag));
+    }
 }
