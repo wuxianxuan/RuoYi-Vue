@@ -40,7 +40,7 @@
                 AND focus_flag = #{focusFlag}
             </if>
         </where>
-        order by sort_order asc, id desc
+        order by update_time desc, id desc
     </select>
 
     <select id="selectPlateById" parameterType="Long" resultMap="StockPlateResult">
