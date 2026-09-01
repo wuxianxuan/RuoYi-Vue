@@ -179,7 +179,7 @@ stock:
     limit-up-days: 15
   # 行业/概念资金流向推荐引擎配置
   fund-flow-recommend:
-    # 回看交易日数
+    # 回看交易日数（资金面）
     lookback-days: 5
     # 最少连续净流入天数
     min-consecutive-days: 3
@@ -187,6 +187,16 @@ stock:
     min-net-inflow: 1.0
     # 最少公司家数（0 表示不限制）
     min-total: 0
+    # 趋势回看交易日数（计算区间涨幅与 MA5/MA10）
+    trend-window: 15
+    # 区间涨幅阈值(%)，仅当区间涨幅 > 该值才判定走势向上
+    min-trend-pct: 0
+    # 趋势面（区间涨幅）权重
+    weight-trend: 0.5
+    # 资金面（累计净流入）权重
+    weight-fund: 0.5
+    # 每个类型最多推荐数量
+    top-n: 10
     # 每个类型最多推荐数量
     top-n: 10
     # 综合评分权重（涨跌幅/流入资金/净额/流出资金）

@@ -27,10 +27,12 @@ import java.util.function.Function;
  * 行业/概念资金流向推荐引擎实现
  *
  * 数据来源：stock_fund_flow（行业/概念资金流向快照）。
- * 推荐信号（硬门槛）：近 lookbackDays 个交易日内连续 minConsecutiveDays 日净流入(je>0)，
- * 且累计净流入达到 minNetInflow 亿，最新交易日仍为净流入。
- * 排序评分：最新交易日的涨跌幅(tradeZdf)、流入资金(buy)、流出资金(sell)、净额(je)
- * 四个指标在候选集内 min-max 归一化后加权求和，按综合分降序取前 topN 个板块。
+ * 推荐信号（双重硬门槛）：
+ *   1. 资金面：近 lookbackDays 个交易日内连续 minConsecutiveDays 日净流入(je>0)，
+ *      且累计净流入达到 minNetInflow 亿，最新交易日仍为净流入；
+ *   2. 趋势面：近 trendWindow 个交易日内指数区间涨幅 > minTrendPct，且 MA5(price) > MA10(price) 均线多头。
+ * 排序评分：区间涨幅(趋势面)与累计净流入(资金面)在候选集内 min-max 归一化后加权求和，
+ * 按综合分降序取前 topN 个板块。
  *
  * 输出：按 (plate_type, trade_name) 匹配 stock_plate，
  *   - 已存在：更新备注为「yyyy-MM-dd推荐行业/概念」，focus_flag=1
@@ -72,21 +74,21 @@ public class StockFundFlowRecommendServiceImpl implements IStockFundFlowRecommen
     @Value("${stock.fund-flow-recommend.top-n:10}")
     private int topN;
 
-    /** 涨跌幅权重 */
-    @Value("${stock.fund-flow-recommend.weight-zdf:0.3}")
-    private BigDecimal weightZdf;
+    /** 趋势回看交易日数（计算区间涨幅与 MA5/MA10） */
+    @Value("${stock.fund-flow-recommend.trend-window:15}")
+    private int trendWindow;
 
-    /** 流入资金权重 */
-    @Value("${stock.fund-flow-recommend.weight-buy:0.2}")
-    private BigDecimal weightBuy;
+    /** 区间涨幅阈值(%)，仅当区间涨幅 > 该值才判定走势向上 */
+    @Value("${stock.fund-flow-recommend.min-trend-pct:0}")
+    private BigDecimal minTrendPct;
 
-    /** 净额权重 */
-    @Value("${stock.fund-flow-recommend.weight-je:0.3}")
-    private BigDecimal weightJe;
+    /** 趋势面（区间涨幅）权重 */
+    @Value("${stock.fund-flow-recommend.weight-trend:0.5}")
+    private BigDecimal weightTrend;
 
-    /** 流出资金权重（负向） */
-    @Value("${stock.fund-flow-recommend.weight-sell:0.2}")
-    private BigDecimal weightSell;
+    /** 资金面（累计净流入）权重 */
+    @Value("${stock.fund-flow-recommend.weight-fund:0.5}")
+    private BigDecimal weightFund;
 
     @Override
     public void execute()
@@ -110,8 +112,9 @@ public class StockFundFlowRecommendServiceImpl implements IStockFundFlowRecommen
         String typeLabel = "INDUSTRY".equals(plateType) ? "行业" : "概念";
         String dateStr = LocalDate.now().toString();
 
-        // 1. 取最近 lookbackDays 个交易日
-        List<Date> dates = stockFundFlowMapper.selectRecentTradeDates(plateType, lookbackDays);
+        // 1. 取最近 max(lookbackDays, trendWindow) 个交易日，覆盖资金面与趋势面
+        int window = Math.max(lookbackDays, trendWindow);
+        List<Date> dates = stockFundFlowMapper.selectRecentTradeDates(plateType, window);
         if (dates == null || dates.isEmpty())
         {
             log.warn("[{}] 无资金流向历史数据，跳过推荐", plateType);
@@ -153,7 +156,7 @@ public class StockFundFlowRecommendServiceImpl implements IStockFundFlowRecommen
 
         if (candidates.isEmpty())
         {
-            log.info("[{}] 无满足资金流入条件的板块", plateType);
+            log.info("[{}] 无满足资金净流入且走势向上条件的板块", plateType);
             return 0;
         }
 
@@ -171,8 +174,8 @@ public class StockFundFlowRecommendServiceImpl implements IStockFundFlowRecommen
             {
                 upsertPlate(plateType, c.name, c.url, typeLabel, dateStr);
                 saved++;
-                log.info("   推荐[{}] {}：涨跌幅 {}%，流入 {} 亿，流出 {} 亿，净额 {} 亿，连续 {} 日净流入，累计净额 {} 亿，综合分 {}",
-                        plateType, c.name, c.zdf, c.buy, c.sell, c.je, c.consecutive, c.netSum, c.score);
+                log.info("   推荐[{}] {}：区间涨幅 {}%，连续 {} 日净流入，累计净额 {} 亿，综合分 {}",
+                        plateType, c.name, c.trendPct, c.consecutive, c.netSum, c.score);
             }
             catch (Exception e)
             {
@@ -183,7 +186,7 @@ public class StockFundFlowRecommendServiceImpl implements IStockFundFlowRecommen
     }
 
     /**
-     * 单板块硬门槛校验 + 收集原始指标，通过则返回候选，否则返回 null
+     * 单板块双重硬门槛校验（资金面 + 趋势面）+ 收集原始指标，通过则返回候选，否则返回 null
      */
     private Candidate buildCandidate(String name, List<StockFundFlow> list)
     {
@@ -197,11 +200,15 @@ public class StockFundFlowRecommendServiceImpl implements IStockFundFlowRecommen
             return null;
         }
 
-        // 连续净流入天数（从最新交易日往前）
+        // ========== 资金面：最近 lookbackDays 个交易日 ==========
+        int fundStart = Math.max(0, n - lookbackDays);
+        List<StockFundFlow> fundWindow = list.subList(fundStart, n);
+
+        // 连续净流入天数（从最新交易日往前，仅在资金窗口内统计）
         int consecutive = 0;
-        for (int i = n - 1; i >= 0; i--)
+        for (int i = fundWindow.size() - 1; i >= 0; i--)
         {
-            BigDecimal je = list.get(i).getJe();
+            BigDecimal je = fundWindow.get(i).getJe();
             if (je != null && je.compareTo(BigDecimal.ZERO) > 0)
             {
                 consecutive++;
@@ -212,9 +219,9 @@ public class StockFundFlowRecommendServiceImpl implements IStockFundFlowRecommen
             }
         }
 
-        // 近 lookbackDays 日累计净流入
+        // 资金窗口内累计净流入
         BigDecimal netSum = BigDecimal.ZERO;
-        for (StockFundFlow f : list)
+        for (StockFundFlow f : fundWindow)
         {
             if (f.getJe() != null)
             {
@@ -223,7 +230,6 @@ public class StockFundFlowRecommendServiceImpl implements IStockFundFlowRecommen
         }
 
         BigDecimal latestJe = latest.getJe();
-
         if (consecutive < minConsecutiveDays)
         {
             return null;
@@ -237,16 +243,65 @@ public class StockFundFlowRecommendServiceImpl implements IStockFundFlowRecommen
             return null;
         }
 
+        // ========== 趋势面：最近 trendWindow 个交易日 ==========
+        int trendStart = Math.max(0, n - trendWindow);
+        List<StockFundFlow> trendWindowList = list.subList(trendStart, n);
+
+        // 区间涨幅：(最新指数 - 区间首日指数) / 区间首日指数
+        BigDecimal firstPrice = trendWindowList.get(0).getPrice();
+        BigDecimal latestPrice = latest.getPrice();
+        BigDecimal trendPct = null;
+        if (firstPrice != null && latestPrice != null && firstPrice.compareTo(BigDecimal.ZERO) != 0)
+        {
+            trendPct = latestPrice.subtract(firstPrice)
+                    .divide(firstPrice, 6, RoundingMode.HALF_UP)
+                    .multiply(new BigDecimal("100"));
+        }
+
+        // 均线多头：MA5(price) > MA10(price)
+        BigDecimal ma5 = maPrice(trendWindowList, 5);
+        BigDecimal ma10 = maPrice(trendWindowList, 10);
+
+        boolean trendUp = trendPct != null
+                && trendPct.compareTo(minTrendPct) > 0
+                && ma5 != null && ma10 != null
+                && ma5.compareTo(ma10) > 0;
+
+        if (!trendUp)
+        {
+            return null;
+        }
+
         Candidate c = new Candidate();
         c.name = name;
         c.url = latest.getUrl();
-        c.zdf = latest.getTradeZdf();
-        c.buy = latest.getBuy();
-        c.sell = latest.getSell();
-        c.je = latestJe;
+        c.trendPct = trendPct;
         c.consecutive = consecutive;
         c.netSum = netSum;
         return c;
+    }
+
+    /**
+     * 计算 price 的 period 日均线（用最近 period 个交易日），数据不足或含空值返回 null
+     */
+    private BigDecimal maPrice(List<StockFundFlow> list, int period)
+    {
+        int n = list.size();
+        if (n < period)
+        {
+            return null;
+        }
+        BigDecimal sum = BigDecimal.ZERO;
+        for (int i = n - period; i < n; i++)
+        {
+            BigDecimal p = list.get(i).getPrice();
+            if (p == null)
+            {
+                return null;
+            }
+            sum = sum.add(p);
+        }
+        return sum.divide(BigDecimal.valueOf(period), 6, RoundingMode.HALF_UP);
     }
 
     /**
@@ -286,13 +341,10 @@ public class StockFundFlowRecommendServiceImpl implements IStockFundFlowRecommen
     {
         String name;
         String url;
-        BigDecimal zdf;   // 涨跌幅（最新交易日）
-        BigDecimal buy;   // 流入资金（最新交易日）
-        BigDecimal sell;  // 流出资金（最新交易日）
-        BigDecimal je;    // 净额（最新交易日）
-        int consecutive;  // 连续净流入天数
-        BigDecimal netSum; // 累计净流入
-        BigDecimal score;  // 综合分
+        BigDecimal trendPct;  // 区间涨幅（趋势面）
+        int consecutive;      // 连续净流入天数（资金面）
+        BigDecimal netSum;    // 累计净流入（资金面）
+        BigDecimal score;     // 综合分
 
         BigDecimal getScore()
         {
@@ -301,30 +353,20 @@ public class StockFundFlowRecommendServiceImpl implements IStockFundFlowRecommen
     }
 
     /**
-     * 对候选集做 min-max 归一化后加权求和，得到综合分
+     * 对候选集做 min-max 归一化后加权求和（趋势面区间涨幅 + 资金面累计净流入）
      */
     private void scoreCandidates(List<Candidate> candidates)
     {
-        BigDecimal zdfMin = minOf(candidates, c -> c.zdf);
-        BigDecimal zdfMax = maxOf(candidates, c -> c.zdf);
-        BigDecimal buyMin = minOf(candidates, c -> c.buy);
-        BigDecimal buyMax = maxOf(candidates, c -> c.buy);
-        BigDecimal sellMin = minOf(candidates, c -> c.sell);
-        BigDecimal sellMax = maxOf(candidates, c -> c.sell);
-        BigDecimal jeMin = minOf(candidates, c -> c.je);
-        BigDecimal jeMax = maxOf(candidates, c -> c.je);
+        BigDecimal trendMin = minOf(candidates, c -> c.trendPct);
+        BigDecimal trendMax = maxOf(candidates, c -> c.trendPct);
+        BigDecimal fundMin = minOf(candidates, c -> c.netSum);
+        BigDecimal fundMax = maxOf(candidates, c -> c.netSum);
 
         for (Candidate c : candidates)
         {
-            BigDecimal nZdf = normalize(c.zdf, zdfMin, zdfMax);
-            BigDecimal nBuy = normalize(c.buy, buyMin, buyMax);
-            BigDecimal nSell = normalize(c.sell, sellMin, sellMax);
-            BigDecimal nJe = normalize(c.je, jeMin, jeMax);
-
-            c.score = weightZdf.multiply(nZdf)
-                    .add(weightBuy.multiply(nBuy))
-                    .add(weightJe.multiply(nJe))
-                    .subtract(weightSell.multiply(nSell));
+            BigDecimal nTrend = normalize(c.trendPct, trendMin, trendMax);
+            BigDecimal nFund = normalize(c.netSum, fundMin, fundMax);
+            c.score = weightTrend.multiply(nTrend).add(weightFund.multiply(nFund));
         }
     }
 
