@@ -173,10 +173,10 @@ stock:
     sign: 6dfce97fbf19527e4957cca0127feafd
   # 龙头股七大战法推荐引擎配置
   leader-strategy:
-    # 每个战法分组最多取几只股票
-    top-stocks: 10
     # K线回看日历天数（覆盖约 100+ 交易日，满足 MA60 / 66日新低 / 40日窗口）
     lookback-days: 150
+    # 涨停候选回看日历天数（从财联社涨停记录中选取最近 N 天）
+    limit-up-days: 15
   # 行业/概念资金流向推荐引擎配置
   fund-flow-recommend:
     # 回看交易日数

@@ -1,15 +1,16 @@
 package com.ruoyi.system.service.impl;
 
+import com.ruoyi.common.utils.stock.TradingDayUtils;
 import com.ruoyi.system.domain.stock.Stock;
 import com.ruoyi.system.domain.stock.StockGroup;
 import com.ruoyi.system.domain.stock.StockIndicator;
 import com.ruoyi.system.domain.stock.StockKline;
-import com.ruoyi.system.domain.stock.StockPlate;
 import com.ruoyi.system.mapper.StockIndicatorMapper;
 import com.ruoyi.system.mapper.StockKlineMapper;
+import com.ruoyi.system.mapper.StockLimitUpRecordMapper;
+import com.ruoyi.system.mapper.StockPlateMapper;
 import com.ruoyi.system.service.IStockGroupService;
 import com.ruoyi.system.service.IStockLeaderStrategyService;
-import com.ruoyi.system.service.IStockPlateService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,7 +34,7 @@ import java.util.stream.Collectors;
 /**
  * 龙头股七大战法推荐引擎实现
  *
- * 数据来源：focus_flag=1 的重点关注板块（行业+概念）成分股。
+ * 数据来源：财联社涨停记录（近15天）中，所属行业/概念为重点关注板块（focus_flag=1）的股票。
  * 均线（MA5/10/20/30/34/60）从 stock_indicator 缓存读取（由 StockIndicatorCalcTask 预计算），
  * 仅从 stock_kline 拉取原始 OHLCV 用于蜡烛形态/跳空/突破/前期涨停/振幅/新低等判定，避免重复现算指标。
  *
@@ -60,7 +61,10 @@ public class StockLeaderStrategyServiceImpl implements IStockLeaderStrategyServi
     private static final double EPS = 1e-6;
 
     @Autowired
-    private IStockPlateService stockPlateService;
+    private StockLimitUpRecordMapper stockLimitUpRecordMapper;
+
+    @Autowired
+    private StockPlateMapper stockPlateMapper;
 
     @Autowired
     private StockKlineMapper stockKlineMapper;
@@ -71,13 +75,13 @@ public class StockLeaderStrategyServiceImpl implements IStockLeaderStrategyServi
     @Autowired
     private IStockGroupService stockGroupService;
 
-    /** 每个战法分组最多取几只股票 */
-    @Value("${stock.leader-strategy.top-stocks:10}")
-    private int topStocks;
-
     /** K线/指标回看日历天数（覆盖约 100+ 交易日，满足 MA60 / 66日新低 / 40日窗口） */
     @Value("${stock.leader-strategy.lookback-days:150}")
     private int lookbackDays;
+
+    /** 涨停候选回看日历天数（从财联社涨停记录中选取最近 N 天） */
+    @Value("${stock.leader-strategy.limit-up-days:15}")
+    private int limitUpDays;
 
     /**
      * 战法定义：名称 + 启动条件描述（写入分组备注） + 预告评估函数（左侧/蓄势）
@@ -118,37 +122,34 @@ public class StockLeaderStrategyServiceImpl implements IStockLeaderStrategyServi
     {
         log.info("========== 龙头股七大战法推荐引擎开始 ==========");
 
-        // 1. 查询重点关注板块（focus_flag = 1，含行业+概念）
-        StockPlate filter = new StockPlate();
-        filter.setFocusFlag(1);
-        List<StockPlate> plates = stockPlateService.selectPlateList(filter);
-        if (plates == null || plates.isEmpty())
+        // 1. 从财联社涨停记录中选取最近 N 天的涨停股票，并校验其所属行业/概念是否为重点关注板块
+        LocalDate today = LocalDate.now();
+        String limitUpStartDate = TradingDayUtils.getDateStr(today.minusDays(limitUpDays));
+        String limitUpEndDate = TradingDayUtils.getDateStr(today);
+        List<String> limitUpCodes = stockLimitUpRecordMapper.selectLimitUpCodesInFocusPlate(limitUpStartDate, limitUpEndDate);
+        if (limitUpCodes == null || limitUpCodes.isEmpty())
         {
-            log.warn("无重点关注板块（focus_flag=1），跳过选股");
+            log.warn("最近 {} 天无「重点板块内」的涨停股票，跳过选股", limitUpDays);
             return;
         }
-        log.info("重点关注板块（行业+概念）共 {} 个", plates.size());
+        log.info("最近 {} 天涨停且属于重点关注板块（行业/概念）的股票 {} 只", limitUpDays, limitUpCodes.size());
 
-        // 2. 汇总候选股票（跨板块去重）
+        // 2. 查询候选股票基础信息（跨板块去重）
         Map<String, Stock> candidateMap = new LinkedHashMap<>();
-        for (StockPlate plate : plates)
+        List<Stock> stocks = stockPlateMapper.selectStocksByCodeBatch(limitUpCodes);
+        if (stocks != null)
         {
-            List<Stock> stocks = stockPlateService.selectPlateStocks(plate.getPlateCode());
-            if (stocks == null)
-            {
-                continue;
-            }
             for (Stock s : stocks)
             {
                 if (s.getStockCode() != null)
                 {
-                    candidateMap.putIfAbsent(s.getStockCode(), s);
+                    candidateMap.put(s.getStockCode(), s);
                 }
             }
         }
         if (candidateMap.isEmpty())
         {
-            log.warn("重点关注板块下无成分股，跳过选股");
+            log.warn("涨停股票均无基础信息，跳过选股");
             return;
         }
         log.info("候选股票（去重后）共 {} 只", candidateMap.size());
@@ -560,7 +561,7 @@ public class StockLeaderStrategyServiceImpl implements IStockLeaderStrategyServi
     }
 
     /**
-     * 生成一个观察池分组：按分数降序取 Top N；无命中则不生成
+     * 生成一个观察池分组：按分数降序，命中全部纳入；无命中则不生成
      */
     private void createGroup(String groupName, List<ScoredStock> matched, String trigger)
     {
@@ -572,19 +573,17 @@ public class StockLeaderStrategyServiceImpl implements IStockLeaderStrategyServi
         }
 
         matched.sort(Comparator.comparingDouble(ScoredStock::getScore).reversed());
-        int topN = Math.min(topStocks, matched.size());
-        List<ScoredStock> top = matched.subList(0, topN);
 
         StockGroup group = new StockGroup();
         group.setGroupName(groupName);
-        group.setStockCodes(top.stream().map(ScoredStock::getStockCode).toArray(String[]::new));
+        group.setStockCodes(matched.stream().map(ScoredStock::getStockCode).toArray(String[]::new));
         group.setCreateBy("system");
         group.setRemark(String.format("观察启动条件：%s（命中%d只）", trigger, matched.size()));
 
         stockGroupService.insertGroup(group);
 
-        log.info("观察池分组 [{}] 命中 {} 只，取前 {} 只", groupName, matched.size(), topN);
-        for (ScoredStock ss : top)
+        log.info("观察池分组 [{}] 命中 {} 只，全部推荐", groupName, matched.size());
+        for (ScoredStock ss : matched)
         {
             log.info("    {} {} 评分={}", ss.stockCode, ss.stockName, Math.round(ss.score));
         }

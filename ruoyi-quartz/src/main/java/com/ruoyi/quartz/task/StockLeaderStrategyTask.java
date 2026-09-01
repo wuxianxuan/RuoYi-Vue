@@ -9,8 +9,8 @@ import org.springframework.stereotype.Component;
 /**
  * 龙头股七大战法推荐定时任务
  *
- * 遍历 focus_flag=1 的重点关注板块（行业+概念），汇总成分股后，按
- * 「龙头股必杀七大战法」逐一识别，每个战法生成一个分组。
+ * 从财联社涨停记录中选取最近15天涨停、且所属行业/概念为重点关注板块（focus_flag=1）的股票，
+ * 按「龙头股必杀七大战法」逐一识别，每个战法生成一个分组。
  * 建议执行时间：每日16:00（收盘后），依赖 K线同步(stockKlineSyncTask)已完成。
  * 通过 RuoYi 定时任务管理页面配置，调用目标字符串: stockLeaderStrategyTask.execute()
  */

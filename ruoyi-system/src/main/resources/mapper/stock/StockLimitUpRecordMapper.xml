@@ -56,4 +56,20 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             update_by = 'system',
             update_time = sysdate()
     </insert>
+
+    <select id="selectLimitUpCodesInFocusPlate" resultType="String">
+        select distinct lr.secu_code
+        from stock_limit_up_record lr
+        where lr.trade_date &gt;= STR_TO_DATE(#{startDate}, '%Y%m%d')
+          and lr.trade_date &lt;= STR_TO_DATE(#{endDate}, '%Y%m%d')
+          and lr.secu_code is not null
+          and lr.secu_code != ''
+          and exists (
+              select 1
+              from stock_plate_stock sps
+              inner join stock_plate sp on sps.plate_code = sp.plate_code
+              where sps.stock_code = lr.secu_code
+                and sp.focus_flag = 1
+          )
+    </select>
 </mapper>
