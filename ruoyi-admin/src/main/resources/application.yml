@@ -199,13 +199,6 @@ stock:
     top-n: 10
     # 涨幅TOP同步数量（每个类型取当前涨幅前 N 个，行业+概念共 2N 个）
     top-zdf-n: 7
-    # 每个类型最多推荐数量
-    top-n: 10
-    # 综合评分权重（涨跌幅/流入资金/净额/流出资金）
-    weight-zdf: 0.3
-    weight-buy: 0.2
-    weight-je: 0.3
-    weight-sell: 0.2
   # 分析结果输出目录
   analysis:
     output-dir: ./data
