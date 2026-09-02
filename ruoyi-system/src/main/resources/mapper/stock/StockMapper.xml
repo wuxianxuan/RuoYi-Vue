@@ -21,6 +21,7 @@
         <result property="turnoverAmount"  column="turnover_amount"    />
         <result property="circulatingShares" column="circulating_shares" />
         <result property="limitUpCount" column="limit_up_count" />
+        <result property="lastLimitUpDate" column="last_limit_up_date" />
         <result property="createBy"    column="create_by"    />
         <result property="createTime"    column="create_time"    />
         <result property="updateBy"    column="update_by"    />
@@ -45,7 +46,8 @@
         s.turnover_rate, s.volume_ratio, s.amplitude,
         s.turnover_amount, s.circulating_shares,
         s.create_by, s.create_time, s.update_by, s.update_time, s.remark,
-        ifnull(ls.limit_up_count, 0) as limit_up_count
+        ifnull(ls.limit_up_count, 0) as limit_up_count,
+        (select max(trade_date) from stock_limit_up_record lr where lr.secu_code = s.stock_code) as last_limit_up_date
         from stock s
         left join stock_limit_up_stat ls on ls.stock_code = s.stock_code
         <where>
@@ -85,6 +87,13 @@
             </if>
             <if test="minLimitUpCount != null">
                 and ifnull(ls.limit_up_count, 0) &gt;= #{minLimitUpCount}
+            </if>
+            <if test="limitUpLatest != null">
+                and exists (
+                    select 1 from stock_limit_up_record lr
+                    where lr.secu_code = s.stock_code
+                    and lr.trade_date = (select max(trade_date) from stock_limit_up_record)
+                )
             </if>
             <if test="minCurrentPrice != null">
                 and s.current_price &gt;= #{minCurrentPrice}

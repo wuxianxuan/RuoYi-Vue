@@ -1,6 +1,7 @@
 package com.ruoyi.system.domain.stock;
 
 import java.math.BigDecimal;
+import java.util.Date;
 import java.util.List;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
@@ -108,6 +109,12 @@ public class Stock extends BaseEntity
 
     /** 涨停数下限筛选参数（非持久化，查询涨停数 >= 该值的数据） */
     private Integer minLimitUpCount;
+
+    /** 最近涨停日期（非持久化，联表 stock_limit_up_record 取最近一次涨停交易日） */
+    private Date lastLimitUpDate;
+
+    /** 筛选参数：仅显示最近一个交易日涨停的股票（非持久化，1=启用） */
+    private Integer limitUpLatest;
 
     /** 现价下限筛选参数（非持久化） */
     private BigDecimal minCurrentPrice;
@@ -325,6 +332,12 @@ public class Stock extends BaseEntity
     {
         this.minLimitUpCount = minLimitUpCount;
     }
+
+    public Date getLastLimitUpDate() { return lastLimitUpDate; }
+    public void setLastLimitUpDate(Date lastLimitUpDate) { this.lastLimitUpDate = lastLimitUpDate; }
+
+    public Integer getLimitUpLatest() { return limitUpLatest; }
+    public void setLimitUpLatest(Integer limitUpLatest) { this.limitUpLatest = limitUpLatest; }
 
     public BigDecimal getMinCurrentPrice() { return minCurrentPrice; }
     public void setMinCurrentPrice(BigDecimal minCurrentPrice) { this.minCurrentPrice = minCurrentPrice; }
