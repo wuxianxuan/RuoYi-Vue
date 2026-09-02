@@ -205,6 +205,22 @@ stock:
     lookback-days: 60
     # 板块/概念分类统计的最小样本数（低于该值不展示）
     min-plate-sample: 10
+    # 可执行口径低吸挂单折扣（买入日开盘价下方比例）
+    low-buy-discount: 0.05
+    # 可执行口径高抛目标涨幅（买入价上方比例）
+    sell-target-pct: 0.02
+  # 涨停低吸高抛参数优化配置
+  limit-up-optimize:
+    # 回看天数（用最近 N 天涨停股做实验）
+    lookback-days: 60
+    # 买入折扣网格（买入日开盘价下方比例）
+    buy-discount-min: 0.00
+    buy-discount-max: 0.10
+    buy-discount-step: 0.01
+    # 卖出目标网格（买入价上方比例）
+    sell-target-min: 0.00
+    sell-target-max: 0.10
+    sell-target-step: 0.01
   # 分析结果输出目录
   analysis:
     output-dir: ./data

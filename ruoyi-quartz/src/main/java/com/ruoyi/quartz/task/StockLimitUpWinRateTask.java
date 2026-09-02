@@ -35,9 +35,10 @@ import java.util.stream.Collectors;
  *
  * 逻辑：查询最近 lookbackDays 天的涨停股（stock_limit_up_record），对每个涨停事件统计 7 种策略（A~G）的盈利概率，
  *   策略A~G：涨停日 T 之后，分别以 T+1/T+2、T+2/T+3 ... T+7/T+8 买入/卖出（每天推后一天）。
- *   每种策略同时统计两个口径：
+ *   每种策略同时统计三个口径：
  *     理论：买入日最低价买入、卖出日最高价卖出（完美择时，胜率偏高）；
- *     实盘：买入日收盘价买入、卖出日收盘价卖出（可实现，胜率更真实）。
+ *     实盘：买入日收盘价买入、卖出日收盘价卖出（可实现，胜率更真实）；
+ *     可执行：买入日开盘价下方 lowBuyDiscount 挂单低吸（不成交则收盘买），卖出日买入价上方 sellTargetPct 挂单高抛（不成交则收盘卖）。
  *   同时按股票所属的板块/概念（行业+概念）分类，分别统计各板块/概念在 A~G 策略下的胜率。
  *
  * 输出：日志打印总体结果；完整结果（总体 + 板块/概念）写入 CSV 文件。
@@ -65,6 +66,14 @@ public class StockLimitUpWinRateTask
     /** 结果输出目录 */
     @Value("${stock.analysis.output-dir:./data}")
     private String outputDir;
+
+    /** 可执行口径低吸挂单折扣（买入日开盘价下方比例） */
+    @Value("${stock.limit-up-win-rate.low-buy-discount:0.02}")
+    private BigDecimal lowBuyDiscount;
+
+    /** 可执行口径高抛目标涨幅（买入价上方比例） */
+    @Value("${stock.limit-up-win-rate.sell-target-pct:0.03}")
+    private BigDecimal sellTargetPct;
 
     @Autowired
     private StockLimitUpRecordMapper stockLimitUpRecordMapper;
@@ -127,8 +136,12 @@ public class StockLimitUpWinRateTask
         int[] realTotals = new int[STRATEGY_COUNT];
         int[] realWins = new int[STRATEGY_COUNT];
         BigDecimal[] realReturnSums = new BigDecimal[STRATEGY_COUNT];
+        int[] execTotals = new int[STRATEGY_COUNT];
+        int[] execWins = new int[STRATEGY_COUNT];
+        BigDecimal[] execReturnSums = new BigDecimal[STRATEGY_COUNT];
         Arrays.fill(theoReturnSums, BigDecimal.ZERO);
         Arrays.fill(realReturnSums, BigDecimal.ZERO);
+        Arrays.fill(execReturnSums, BigDecimal.ZERO);
 
         Map<String, List<String>> stockPlateMap = buildStockPlateMap(codes);
         Map<String, PlateStat> plateStats = new HashMap<>();
@@ -193,6 +206,9 @@ public class StockLimitUpWinRateTask
                 boolean realValid = realBuy != null && realSell != null && realBuy.compareTo(BigDecimal.ZERO) > 0;
                 BigDecimal realRet = realValid ? realSell.subtract(realBuy).divide(realBuy, 6, RoundingMode.HALF_UP) : null;
 
+                BigDecimal[] exec = execPrices(buyK, sellK);
+                boolean execValid = exec != null;
+
                 // 总体统计
                 if (theoValid)
                 {
@@ -205,6 +221,12 @@ public class StockLimitUpWinRateTask
                     realTotals[s]++;
                     realReturnSums[s] = realReturnSums[s].add(realRet);
                     if (realSell.compareTo(realBuy) > 0) realWins[s]++;
+                }
+                if (execValid)
+                {
+                    execTotals[s]++;
+                    execReturnSums[s] = execReturnSums[s].add(exec[1].subtract(exec[0]).divide(exec[0], 6, RoundingMode.HALF_UP));
+                    if (exec[1].compareTo(exec[0]) > 0) execWins[s]++;
                 }
 
                 // 板块/概念统计
@@ -225,6 +247,12 @@ public class StockLimitUpWinRateTask
                             stat.realReturnSums[s] = stat.realReturnSums[s].add(realRet);
                             if (realSell.compareTo(realBuy) > 0) stat.realWins[s]++;
                         }
+                        if (execValid)
+                        {
+                            stat.execTotals[s]++;
+                            stat.execReturnSums[s] = stat.execReturnSums[s].add(exec[1].subtract(exec[0]).divide(exec[0], 6, RoundingMode.HALF_UP));
+                            if (exec[1].compareTo(exec[0]) > 0) stat.execWins[s]++;
+                        }
                     }
                 }
             }
@@ -234,10 +262,11 @@ public class StockLimitUpWinRateTask
         log.info("========== 总体统计结果 ==========");
         for (int s = 0; s < STRATEGY_COUNT; s++)
         {
-            log.info("策略{}：理论 样本{} 胜率{}% 平均收益{}% | 实盘 样本{} 胜率{}% 平均收益{}%",
+            log.info("策略{}：理论 样本{} 胜率{}% | 实盘 样本{} 胜率{}% | 可执行 样本{} 胜率{}%",
                     STRATEGY_LABELS[s],
-                    theoTotals[s], fmtRate(theoTotals[s], theoWins[s]), fmtAvg(theoTotals[s], theoReturnSums[s]),
-                    realTotals[s], fmtRate(realTotals[s], realWins[s]), fmtAvg(realTotals[s], realReturnSums[s]));
+                    theoTotals[s], fmtRate(theoTotals[s], theoWins[s]),
+                    realTotals[s], fmtRate(realTotals[s], realWins[s]),
+                    execTotals[s], fmtRate(execTotals[s], execWins[s]));
         }
         log.info("无 T+1/T+2 数据跳过 {} 条", skipped);
 
@@ -250,6 +279,8 @@ public class StockLimitUpWinRateTask
                     theoTotals[s], theoWins[s], rateCsv(theoTotals[s], theoWins[s]), avgCsv(theoTotals[s], theoReturnSums[s])));
             csvLines.add(csvLine("总体", "", STRATEGY_LABELS[s], "实盘",
                     realTotals[s], realWins[s], rateCsv(realTotals[s], realWins[s]), avgCsv(realTotals[s], realReturnSums[s])));
+            csvLines.add(csvLine("总体", "", STRATEGY_LABELS[s], "可执行",
+                    execTotals[s], execWins[s], rateCsv(execTotals[s], execWins[s]), avgCsv(execTotals[s], execReturnSums[s])));
         }
         for (Map.Entry<String, PlateStat> e : plateStats.entrySet())
         {
@@ -264,6 +295,8 @@ public class StockLimitUpWinRateTask
                         ps.theoTotals[s], ps.theoWins[s], rateCsv(ps.theoTotals[s], ps.theoWins[s]), avgCsv(ps.theoTotals[s], ps.theoReturnSums[s])));
                 csvLines.add(csvLine("板块", e.getKey(), STRATEGY_LABELS[s], "实盘",
                         ps.realTotals[s], ps.realWins[s], rateCsv(ps.realTotals[s], ps.realWins[s]), avgCsv(ps.realTotals[s], ps.realReturnSums[s])));
+                csvLines.add(csvLine("板块", e.getKey(), STRATEGY_LABELS[s], "可执行",
+                        ps.execTotals[s], ps.execWins[s], rateCsv(ps.execTotals[s], ps.execWins[s]), avgCsv(ps.execTotals[s], ps.execReturnSums[s])));
             }
         }
 
@@ -408,7 +441,33 @@ public class StockLimitUpWinRateTask
         return map;
     }
 
-    /** 板块/概念分类统计结果（A~G × 理论/实盘） */
+    /** 计算可执行口径（挂单低吸高抛）的买入价/卖出价，数据不足返回 null */
+    private BigDecimal[] execPrices(StockKline buyK, StockKline sellK)
+    {
+        BigDecimal buyOpen = buyK.getOpenPrice();
+        BigDecimal buyClose = buyK.getClosePrice();
+        BigDecimal buyLow = buyK.getLowPrice();
+        BigDecimal sellHigh = sellK.getHighPrice();
+        BigDecimal sellClose = sellK.getClosePrice();
+        if (buyOpen == null || buyClose == null || buyLow == null || sellHigh == null || sellClose == null
+                || buyOpen.compareTo(BigDecimal.ZERO) <= 0)
+        {
+            return null;
+        }
+        // 买入：开盘价下方 lowBuyDiscount 挂单，跌到成交，否则收盘价买入
+        BigDecimal buyLimit = buyOpen.multiply(BigDecimal.ONE.subtract(lowBuyDiscount));
+        BigDecimal buy = buyLow.compareTo(buyLimit) <= 0 ? buyLimit : buyClose;
+        // 卖出：买入价上方 sellTargetPct 挂单，涨到成交，否则收盘价卖出
+        BigDecimal sellTarget = buy.multiply(BigDecimal.ONE.add(sellTargetPct));
+        BigDecimal sell = sellHigh.compareTo(sellTarget) >= 0 ? sellTarget : sellClose;
+        if (buy.compareTo(BigDecimal.ZERO) <= 0 || sell.compareTo(BigDecimal.ZERO) <= 0)
+        {
+            return null;
+        }
+        return new BigDecimal[]{buy, sell};
+    }
+
+    /** 板块/概念分类统计结果（A~G × 理论/实盘/可执行） */
     private static class PlateStat
     {
         final int[] theoTotals = new int[STRATEGY_COUNT];
@@ -417,11 +476,15 @@ public class StockLimitUpWinRateTask
         final int[] realTotals = new int[STRATEGY_COUNT];
         final int[] realWins = new int[STRATEGY_COUNT];
         final BigDecimal[] realReturnSums = new BigDecimal[STRATEGY_COUNT];
+        final int[] execTotals = new int[STRATEGY_COUNT];
+        final int[] execWins = new int[STRATEGY_COUNT];
+        final BigDecimal[] execReturnSums = new BigDecimal[STRATEGY_COUNT];
 
         PlateStat()
         {
             Arrays.fill(theoReturnSums, BigDecimal.ZERO);
             Arrays.fill(realReturnSums, BigDecimal.ZERO);
+            Arrays.fill(execReturnSums, BigDecimal.ZERO);
         }
     }
 }
