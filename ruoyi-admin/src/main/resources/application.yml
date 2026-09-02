@@ -199,6 +199,12 @@ stock:
     top-n: 10
     # 涨幅TOP同步数量（每个类型取当前涨幅前 N 个，行业+概念共 2N 个）
     top-zdf-n: 7
+  # 涨停次日低吸/第三日高抛盈利概率统计配置
+  limit-up-win-rate:
+    # 回看天数
+    lookback-days: 60
+    # 板块/概念分类统计的最小样本数（低于该值不展示）
+    min-plate-sample: 10
   # 分析结果输出目录
   analysis:
     output-dir: ./data

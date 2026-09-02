@@ -72,4 +72,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                 and sp.focus_flag = 1
           )
     </select>
+
+    <select id="selectLimitUpEvents" resultMap="StockLimitUpRecordResult">
+        select distinct trade_date, secu_code
+        from stock_limit_up_record
+        where trade_date &gt;= STR_TO_DATE(#{startDate}, '%Y%m%d')
+          and trade_date &lt;= STR_TO_DATE(#{endDate}, '%Y%m%d')
+          and secu_code is not null
+          and secu_code != ''
+        order by trade_date asc, secu_code asc
+    </select>
 </mapper>
