@@ -47,9 +47,15 @@
         s.turnover_amount, s.circulating_shares,
         s.create_by, s.create_time, s.update_by, s.update_time, s.remark,
         ifnull(ls.limit_up_count, 0) as limit_up_count,
-        (select max(trade_date) from stock_limit_up_record lr where lr.secu_code = s.stock_code) as last_limit_up_date
+        lr.last_limit_up_date
         from stock s
         left join stock_limit_up_stat ls on ls.stock_code = s.stock_code
+        left join (
+            select secu_code, max(trade_date) as last_limit_up_date
+            from stock_limit_up_record
+            where secu_code is not null and secu_code != ''
+            group by secu_code
+        ) lr on lr.secu_code = s.stock_code
         <where>
             <if test="stockCode != null  and stockCode != ''"> and s.stock_code = #{stockCode}</if>
             <if test="stockName != null  and stockName != ''"> and s.stock_name like concat('%', #{stockName}, '%')</if>
