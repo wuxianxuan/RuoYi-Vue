@@ -211,4 +211,12 @@ stock:
     exclude-st: true
     # 扫描市场列表（逗号分隔）
     markets: SH,SZ
+  # 下跌反转选股配置
+  decline-reversal:
+    # 回看日历天数（a）
+    lookback-days: 60
+    # 是否排除 ST/*ST 股票
+    exclude-st: true
+    # 扫描市场列表（逗号分隔）
+    markets: SH,SZ
 
