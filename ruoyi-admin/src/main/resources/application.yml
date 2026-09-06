@@ -221,6 +221,24 @@ stock:
     sell-target-min: 0.00
     sell-target-max: 0.10
     sell-target-step: 0.01
+  # 趋势上涨选股配置
+  rising-trend:
+    # 回看日历天数（a）
+    lookback-days: 60
+    # 每个节点整合的K线点数（b）
+    points-per-node: 3
+    # 偏离判定的滑动窗口大小（x，每 x 个节点）
+    window-nodes: 10
+    # 每个窗口内允许的最大偏离次数（y，偏离次数必须 < 该值）
+    max-deviation: 2
+    # 最少节点数，低于该值不参与判定
+    min-nodes: 5
+    # 是否要求整体上涨（末节点 > 首节点）
+    require-overall-up: true
+    # 是否排除 ST/*ST 股票
+    exclude-st: true
+    # 扫描市场列表（逗号分隔）
+    markets: SH,SZ
   # 分析结果输出目录
   analysis:
     output-dir: ./data
