@@ -45,17 +45,4 @@ public interface StockIndicatorMapper
     List<StockIndicator> selectLatestByStockCodes(@Param("stockCodes") List<String> stockCodes,
                                                    @Param("klineType") String klineType);
 
-    /**
-     * 批量查询多只股票在指定日期范围内的指标时序
-     *
-     * @param stockCodes 股票代码列表
-     * @param klineType  K线类型
-     * @param startDate  开始日期（含）
-     * @param endDate    结束日期（含）
-     * @return 指标列表，按 stock_code、trade_time 升序
-     */
-    List<StockIndicator> selectByCodesAndTypeDateRange(@Param("stockCodes") List<String> stockCodes,
-                                                       @Param("klineType") String klineType,
-                                                       @Param("startDate") String startDate,
-                                                       @Param("endDate") String endDate);
 }

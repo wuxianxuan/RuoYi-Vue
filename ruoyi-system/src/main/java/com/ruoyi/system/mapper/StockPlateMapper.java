@@ -94,11 +94,6 @@ public interface StockPlateMapper {
     public List<java.util.Map<String, Object>> selectIndustryNamesByStockCodes(@Param("stockCodes") List<String> stockCodes);
 
     /**
-     * 批量查询股票所属的板块/概念名称（行业+概念，返回 stock_code、plate_name、plate_type）
-     */
-    public List<java.util.Map<String, Object>> selectPlateNamesByStockCodes(@Param("stockCodes") List<String> stockCodes);
-
-    /**
      * 按名称+类型精确查询板块
      */
     public StockPlate selectPlateByNameAndType(@Param("plateName") String plateName, @Param("plateType") String plateType);

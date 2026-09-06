@@ -198,16 +198,4 @@
         order by sps.stock_code, sp.sort_order asc
     </select>
 
-    <!-- 批量查询股票所属的板块/概念名称（行业+概念） -->
-    <select id="selectPlateNamesByStockCodes" resultType="java.util.HashMap">
-        select sps.stock_code as stockCode, sp.plate_name as plateName, sp.plate_type as plateType
-        from stock_plate_stock sps
-        inner join stock_plate sp on sps.plate_code = sp.plate_code
-        where sps.stock_code in
-        <foreach item="stockCode" collection="stockCodes" open="(" separator="," close=")">
-            #{stockCode}
-        </foreach>
-        order by sps.stock_code, sp.sort_order asc
-    </select>
-
 </mapper>

@@ -171,12 +171,6 @@ stock:
   # 财联社数据源
   cls:
     sign: 6dfce97fbf19527e4957cca0127feafd
-  # 龙头股七大战法推荐引擎配置
-  leader-strategy:
-    # K线回看日历天数（覆盖约 100+ 交易日，满足 MA60 / 66日新低 / 40日窗口）
-    lookback-days: 150
-    # 涨停候选回看日历天数（从财联社涨停记录中选取最近 N 天）
-    limit-up-days: 15
   # 行业/概念资金流向推荐引擎配置
   fund-flow-recommend:
     # 回看交易日数（资金面）
@@ -199,28 +193,6 @@ stock:
     top-n: 10
     # 涨幅TOP同步数量（每个类型取当前涨幅前 N 个，行业+概念共 2N 个）
     top-zdf-n: 7
-  # 涨停次日低吸/第三日高抛盈利概率统计配置
-  limit-up-win-rate:
-    # 回看天数
-    lookback-days: 60
-    # 板块/概念分类统计的最小样本数（低于该值不展示）
-    min-plate-sample: 10
-    # 可执行口径低吸挂单折扣（买入日开盘价下方比例）
-    low-buy-discount: 0.05
-    # 可执行口径高抛目标涨幅（买入价上方比例）
-    sell-target-pct: 0.02
-  # 涨停低吸高抛参数优化配置
-  limit-up-optimize:
-    # 回看天数（用最近 N 天涨停股做实验）
-    lookback-days: 60
-    # 买入折扣网格（买入日开盘价下方比例）
-    buy-discount-min: 0.00
-    buy-discount-max: 0.10
-    buy-discount-step: 0.01
-    # 卖出目标网格（买入价上方比例）
-    sell-target-min: 0.00
-    sell-target-max: 0.10
-    sell-target-step: 0.01
   # 趋势上涨选股配置
   rising-trend:
     # 回看日历天数（a）
@@ -230,7 +202,7 @@ stock:
     # 偏离判定的滑动窗口大小（x，每 x 个节点）
     window-nodes: 10
     # 每个窗口内允许的最大偏离次数（y，偏离次数必须 < 该值）
-    max-deviation: 2
+    max-deviation: 1
     # 最少节点数，低于该值不参与判定
     min-nodes: 5
     # 是否要求整体上涨（末节点 > 首节点）
@@ -239,7 +211,4 @@ stock:
     exclude-st: true
     # 扫描市场列表（逗号分隔）
     markets: SH,SZ
-  # 分析结果输出目录
-  analysis:
-    output-dir: ./data
 
