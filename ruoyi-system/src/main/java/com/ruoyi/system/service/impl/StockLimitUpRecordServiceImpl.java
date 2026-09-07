@@ -3,6 +3,7 @@ package com.ruoyi.system.service.impl;
 import com.ruoyi.common.utils.stock.TradingDayUtils;
 import com.ruoyi.system.domain.stock.*;
 import com.ruoyi.system.mapper.StockLimitUpRecordMapper;
+import com.ruoyi.system.mapper.StockMapper;
 import com.ruoyi.system.service.IStockLimitUpRecordService;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
@@ -21,6 +22,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class StockLimitUpRecordServiceImpl implements IStockLimitUpRecordService {
@@ -37,6 +39,9 @@ public class StockLimitUpRecordServiceImpl implements IStockLimitUpRecordService
 
     @Resource
     private StockLimitUpRecordMapper stockAnalysisRecordMapper;
+
+    @Resource
+    private StockMapper stockMapper;
 
     @Override
     public int batchSaveStockLimitUpRecords(List<StockLimitUpRecord> records) {
@@ -160,8 +165,23 @@ public class StockLimitUpRecordServiceImpl implements IStockLimitUpRecordService
 
         if (!records.isEmpty()) {
             batchSaveStockLimitUpRecords(records);
+            updateStockLastLimitUpDate(records, date);
         }
         return records.size();
+    }
+
+    /** 采集完成后，将当日涨停股票的最新涨停日期更新为该交易日（仅向前不回退） */
+    private void updateStockLastLimitUpDate(List<StockLimitUpRecord> records, String date) {
+        List<String> codes = records.stream()
+                .map(StockLimitUpRecord::getSecuCode)
+                .filter(c -> c != null && !c.isEmpty())
+                .distinct()
+                .collect(Collectors.toList());
+        if (codes.isEmpty()) {
+            return;
+        }
+        int updated = stockMapper.updateLastLimitUpDate(codes, parseTradeDate(date));
+        log.info("日期 {} 更新最新涨停日期 {} 只", date, updated);
     }
 
     /** 解析 yyyyMMdd 字符串为 java.sql.Date（stock_limit_up_record.trade_date 为 date 类型） */

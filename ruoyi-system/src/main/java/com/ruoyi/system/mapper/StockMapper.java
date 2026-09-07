@@ -3,6 +3,7 @@ package com.ruoyi.system.mapper;
 import com.ruoyi.system.domain.stock.Stock;
 import org.apache.ibatis.annotations.Param;
 
+import java.util.Date;
 import java.util.List;
 
 /**
@@ -90,4 +91,12 @@ public interface StockMapper
      * @return 已存在的股票代码集合
      */
     public List<String> selectStockCodesByCodes(@Param("codes") List<String> codes);
+
+    /**
+     * 批量更新股票的最新涨停日期（由涨停数据采集任务写入，仅向前不回退）
+     *
+     * @param stockCodes 当日涨停股票代码列表
+     * @param tradeDate  涨停交易日
+     */
+    public int updateLastLimitUpDate(@Param("stockCodes") List<String> stockCodes, @Param("tradeDate") Date tradeDate);
 }

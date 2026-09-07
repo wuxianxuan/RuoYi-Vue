@@ -110,11 +110,14 @@ public class Stock extends BaseEntity
     /** 涨停数下限筛选参数（非持久化，查询涨停数 >= 该值的数据） */
     private Integer minLimitUpCount;
 
-    /** 最近涨停日期（非持久化，联表 stock_limit_up_record 取最近一次涨停交易日） */
+    /** 最新涨停日期（持久化，由涨停数据采集任务写入） */
     private Date lastLimitUpDate;
 
-    /** 筛选参数：仅显示最近一个交易日涨停的股票（非持久化，1=启用） */
-    private Integer limitUpLatest;
+    /** 涨停日期范围筛选参数：起始日期（yyyy-MM-dd，非持久化） */
+    private String limitUpDateStart;
+
+    /** 涨停日期范围筛选参数：结束日期（yyyy-MM-dd，非持久化） */
+    private String limitUpDateEnd;
 
     /** 现价下限筛选参数（非持久化） */
     private BigDecimal minCurrentPrice;
@@ -336,8 +339,11 @@ public class Stock extends BaseEntity
     public Date getLastLimitUpDate() { return lastLimitUpDate; }
     public void setLastLimitUpDate(Date lastLimitUpDate) { this.lastLimitUpDate = lastLimitUpDate; }
 
-    public Integer getLimitUpLatest() { return limitUpLatest; }
-    public void setLimitUpLatest(Integer limitUpLatest) { this.limitUpLatest = limitUpLatest; }
+    public String getLimitUpDateStart() { return limitUpDateStart; }
+    public void setLimitUpDateStart(String limitUpDateStart) { this.limitUpDateStart = limitUpDateStart; }
+
+    public String getLimitUpDateEnd() { return limitUpDateEnd; }
+    public void setLimitUpDateEnd(String limitUpDateEnd) { this.limitUpDateEnd = limitUpDateEnd; }
 
     public BigDecimal getMinCurrentPrice() { return minCurrentPrice; }
     public void setMinCurrentPrice(BigDecimal minCurrentPrice) { this.minCurrentPrice = minCurrentPrice; }
