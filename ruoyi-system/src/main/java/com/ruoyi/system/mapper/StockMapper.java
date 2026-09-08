@@ -99,4 +99,12 @@ public interface StockMapper
      * @param tradeDate  涨停交易日
      */
     public int updateLastLimitUpDate(@Param("stockCodes") List<String> stockCodes, @Param("tradeDate") Date tradeDate);
+
+    /**
+     * 更新单只股票的历史最高连板数（由涨停数据采集任务写入，仅当大于当前值才覆盖）
+     *
+     * @param stockCode  股票代码
+     * @param boardCount 本次解析出的连板数
+     */
+    public int updateMaxLimitUpBoard(@Param("stockCode") String stockCode, @Param("boardCount") Integer boardCount);
 }

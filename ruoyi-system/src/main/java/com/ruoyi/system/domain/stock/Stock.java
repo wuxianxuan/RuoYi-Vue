@@ -52,47 +52,47 @@ public class Stock extends BaseEntity
     private String groupNamesStr;
 
     /** 现价 */
-    @Excel(name = "现价", sort = 7)
+    @Excel(name = "现价", sort = 10)
     private BigDecimal currentPrice;
 
     /** 涨跌幅(%) */
-    @Excel(name = "涨跌幅(%)", sort = 8)
+    @Excel(name = "涨跌幅(%)", sort = 11)
     private BigDecimal changeRate;
 
     /** 涨跌 */
-    @Excel(name = "涨跌", sort = 9)
+    @Excel(name = "涨跌", sort = 12)
     private BigDecimal priceChange;
 
     /** 涨速(%) */
-    @Excel(name = "涨速(%)", sort = 10)
+    @Excel(name = "涨速(%)", sort = 13)
     private BigDecimal speed;
 
     /** 换手率(%) */
-    @Excel(name = "换手(%)", sort = 11)
+    @Excel(name = "换手(%)", sort = 14)
     private BigDecimal turnoverRate;
 
     /** 量比 */
-    @Excel(name = "量比", sort = 12)
+    @Excel(name = "量比", sort = 15)
     private BigDecimal volumeRatio;
 
     /** 振幅(%) */
-    @Excel(name = "振幅(%)", sort = 13)
+    @Excel(name = "振幅(%)", sort = 16)
     private BigDecimal amplitude;
 
     /** 成交额 */
-    @Excel(name = "成交额", sort = 14)
+    @Excel(name = "成交额", sort = 17)
     private BigDecimal turnoverAmount;
 
     /** 流通股 */
-    @Excel(name = "流通股", sort = 15)
+    @Excel(name = "流通股", sort = 18)
     private BigDecimal circulatingShares;
 
     /** 流通市值 */
-    @Excel(name = "流通市值", sort = 16)
+    @Excel(name = "流通市值", sort = 19)
     private BigDecimal circMarketCap;
 
     /** 市盈率（PE） */
-    @Excel(name = "市盈率", sort = 17)
+    @Excel(name = "市盈率", sort = 20)
     private BigDecimal peRatio;
 
     /** 行业筛选参数（非持久化，支持多选） */
@@ -105,13 +105,19 @@ public class Stock extends BaseEntity
     private Long[] groupIds;
 
     /** 涨停数（近30天，含今天，列表展示用，非持久化） */
+    @Excel(name = "涨停数", sort = 7)
     private Integer limitUpCount;
 
     /** 涨停数下限筛选参数（非持久化，查询涨停数 >= 该值的数据） */
     private Integer minLimitUpCount;
 
     /** 最新涨停日期（持久化，由涨停数据采集任务写入） */
+    @Excel(name = "最新涨停日期", sort = 8, dateFormat = "yyyy-MM-dd")
     private Date lastLimitUpDate;
+
+    /** 历史最高连板数（持久化，由涨停数据采集任务写入，仅增不减） */
+    @Excel(name = "历史最高连板数", sort = 9)
+    private Integer maxLimitUpBoard;
 
     /** 涨停日期范围筛选参数：起始日期（yyyy-MM-dd，非持久化） */
     private String limitUpDateStart;
@@ -338,6 +344,9 @@ public class Stock extends BaseEntity
 
     public Date getLastLimitUpDate() { return lastLimitUpDate; }
     public void setLastLimitUpDate(Date lastLimitUpDate) { this.lastLimitUpDate = lastLimitUpDate; }
+
+    public Integer getMaxLimitUpBoard() { return maxLimitUpBoard; }
+    public void setMaxLimitUpBoard(Integer maxLimitUpBoard) { this.maxLimitUpBoard = maxLimitUpBoard; }
 
     public String getLimitUpDateStart() { return limitUpDateStart; }
     public void setLimitUpDateStart(String limitUpDateStart) { this.limitUpDateStart = limitUpDateStart; }

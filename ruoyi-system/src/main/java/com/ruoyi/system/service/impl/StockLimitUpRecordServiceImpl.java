@@ -21,7 +21,11 @@ import java.sql.Date;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -166,6 +170,7 @@ public class StockLimitUpRecordServiceImpl implements IStockLimitUpRecordService
         if (!records.isEmpty()) {
             batchSaveStockLimitUpRecords(records);
             updateStockLastLimitUpDate(records, date);
+            updateStockMaxLimitUpBoard(records);
         }
         return records.size();
     }
@@ -182,6 +187,43 @@ public class StockLimitUpRecordServiceImpl implements IStockLimitUpRecordService
         }
         int updated = stockMapper.updateLastLimitUpDate(codes, parseTradeDate(date));
         log.info("日期 {} 更新最新涨停日期 {} 只", date, updated);
+    }
+
+    /** 采集完成后，解析 up_num（如「8天8板」）取板数，更新各股票历史最高连板数（仅增不减） */
+    private void updateStockMaxLimitUpBoard(List<StockLimitUpRecord> records) {
+        Map<String, Integer> codeMaxBoard = new HashMap<>();
+        for (StockLimitUpRecord record : records) {
+            Integer board = parseBoardCount(record.getUpNum());
+            String code = record.getSecuCode();
+            if (board == null || code == null || code.isEmpty()) {
+                continue;
+            }
+            Integer existing = codeMaxBoard.get(code);
+            if (existing == null || board > existing) {
+                codeMaxBoard.put(code, board);
+            }
+        }
+        int updated = 0;
+        for (Map.Entry<String, Integer> entry : codeMaxBoard.entrySet()) {
+            updated += stockMapper.updateMaxLimitUpBoard(entry.getKey(), entry.getValue());
+        }
+        log.info("更新历史最高连板数 {} 只", updated);
+    }
+
+    /** 解析连板描述（如「8天8板」「3天2板」）中的板数；为空或无法解析返回 null */
+    private Integer parseBoardCount(String upNum) {
+        if (upNum == null || upNum.trim().isEmpty()) {
+            return null;
+        }
+        Matcher matcher = Pattern.compile("(\\d+)板").matcher(upNum);
+        if (!matcher.find()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(matcher.group(1));
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /** 解析 yyyyMMdd 字符串为 java.sql.Date（stock_limit_up_record.trade_date 为 date 类型） */
