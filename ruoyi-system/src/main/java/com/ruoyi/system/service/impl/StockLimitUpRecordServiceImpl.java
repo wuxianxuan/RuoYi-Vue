@@ -170,7 +170,7 @@ public class StockLimitUpRecordServiceImpl implements IStockLimitUpRecordService
         if (!records.isEmpty()) {
             batchSaveStockLimitUpRecords(records);
             updateStockLastLimitUpDate(records, date);
-            updateStockMaxLimitUpBoard(records);
+            updateStockMaxLimitUpBoard(records, date);
         }
         return records.size();
     }
@@ -189,8 +189,8 @@ public class StockLimitUpRecordServiceImpl implements IStockLimitUpRecordService
         log.info("日期 {} 更新最新涨停日期 {} 只", date, updated);
     }
 
-    /** 采集完成后，解析 up_num（如「8天8板」）取板数，更新各股票历史最高连板数（仅增不减） */
-    private void updateStockMaxLimitUpBoard(List<StockLimitUpRecord> records) {
+    /** 采集完成后，解析 up_num（如「8天8板」）取板数，更新各股票历史最高连板数及对应交易日（仅增不减） */
+    private void updateStockMaxLimitUpBoard(List<StockLimitUpRecord> records, String date) {
         Map<String, Integer> codeMaxBoard = new HashMap<>();
         for (StockLimitUpRecord record : records) {
             Integer board = parseBoardCount(record.getUpNum());
@@ -203,9 +203,10 @@ public class StockLimitUpRecordServiceImpl implements IStockLimitUpRecordService
                 codeMaxBoard.put(code, board);
             }
         }
+        Date boardDate = parseTradeDate(date);
         int updated = 0;
         for (Map.Entry<String, Integer> entry : codeMaxBoard.entrySet()) {
-            updated += stockMapper.updateMaxLimitUpBoard(entry.getKey(), entry.getValue());
+            updated += stockMapper.updateMaxLimitUpBoard(entry.getKey(), entry.getValue(), boardDate);
         }
         log.info("更新历史最高连板数 {} 只", updated);
     }

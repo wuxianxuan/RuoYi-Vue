@@ -23,6 +23,7 @@
         <result property="limitUpCount" column="limit_up_count" />
         <result property="lastLimitUpDate" column="last_limit_up_date" />
         <result property="maxLimitUpBoard" column="max_limit_up_board" />
+        <result property="maxLimitUpBoardDate" column="max_limit_up_board_date" />
         <result property="createBy"    column="create_by"    />
         <result property="createTime"    column="create_time"    />
         <result property="updateBy"    column="update_by"    />
@@ -36,7 +37,7 @@
                current_price, change_rate, price_change, speed,
                turnover_rate, volume_ratio, amplitude,
                turnover_amount, circulating_shares,
-               last_limit_up_date, max_limit_up_board,
+               last_limit_up_date, max_limit_up_board, max_limit_up_board_date,
                create_by, create_time, update_by, update_time, remark
         from stock
     </sql>
@@ -50,7 +51,8 @@
         s.create_by, s.create_time, s.update_by, s.update_time, s.remark,
         ifnull(ls.limit_up_count, 0) as limit_up_count,
         s.last_limit_up_date,
-        s.max_limit_up_board
+        s.max_limit_up_board,
+        s.max_limit_up_board_date
         from stock s
         left join stock_limit_up_stat ls on ls.stock_code = s.stock_code
         <where>
@@ -336,10 +338,11 @@
         and (last_limit_up_date is null or last_limit_up_date &lt; #{tradeDate})
     </update>
 
-    <!-- 更新单只股票的历史最高连板数（仅当大于当前值才覆盖） -->
+    <!-- 更新单只股票的历史最高连板数及对应交易日（仅当大于当前值才覆盖） -->
     <update id="updateMaxLimitUpBoard">
         update stock
         set max_limit_up_board = #{boardCount},
+            max_limit_up_board_date = #{boardDate},
             update_time = sysdate()
         where stock_code = #{stockCode}
         and (max_limit_up_board is null or max_limit_up_board &lt; #{boardCount})
