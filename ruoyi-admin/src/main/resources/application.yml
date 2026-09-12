@@ -200,7 +200,7 @@ stock:
     # 每个节点整合的K线点数（b）
     points-per-node: 3
     # 偏离判定的滑动窗口大小（x，每 x 个节点）
-    window-nodes: 10
+    window-nodes: 7
     # 每个窗口内允许的最大偏离次数（y，偏离次数必须 < 该值）
     max-deviation: 1
     # 最少节点数，低于该值不参与判定
@@ -211,10 +211,20 @@ stock:
     exclude-st: true
     # 扫描市场列表（逗号分隔）
     markets: SH,SZ
-  # 下跌反转选股配置
-  decline-reversal:
-    # 回看日历天数（a）
-    lookback-days: 60
+  # 偷偷上涨选股配置
+  stealth-rally:
+    # 观察交易日数
+    lookback-days: 30
+    # 累计涨幅下限（%）
+    min-gain: 5.0
+    # 累计涨幅上限（%）
+    max-gain: 30.0
+    # 缩量比（后段均量/前段均量 < 该值）
+    shrink-ratio: 0.9
+    # 日均换手率上限（%）
+    max-turnover: 3.0
+    # 日均振幅上限（%）
+    max-amplitude: 4.0
     # 是否排除 ST/*ST 股票
     exclude-st: true
     # 扫描市场列表（逗号分隔）
