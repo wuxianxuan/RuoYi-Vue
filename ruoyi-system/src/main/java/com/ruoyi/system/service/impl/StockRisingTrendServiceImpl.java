@@ -26,13 +26,14 @@ import java.util.stream.Collectors;
  * 趋势上涨选股实现
  *
  * 算法流程（对每只股票）：
- *   1. 取最近 lookbackDays 个日历日内的日K线；
+ *   1. 以截止日期（入参，为空则当天）往前回看 lookbackDays 个日历日的日K线；
  *   2. 按交易日升序，找到「收盘价最低」的那天作为起点，切片 [最低日, 最新日]；
  *   3. 每 pointsPerNode 个收盘价取均值整合成一个节点，形成节点链；
  *   4. 判定节点链是否逐步上涨：任意连续 windowNodes 个节点的窗口内，
  *      节点相对前一节点下跌的次数必须 < maxDeviation（允许偶尔偏差）。
+ * 收盘价数量不足 pointsPerNode*minNodes 的股票直接过滤。
  *
- * 命中股票生成一个新分组。
+ * 命中股票生成一个新分组（分组名含截止日期与 pointsPerNode）。
  *
  * @author ruoyi
  */
@@ -83,11 +84,14 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     private String markets;
 
     @Override
-    public void execute()
+    public void execute(String date)
     {
+        // 解析截止日期：入参为空则默认当天
+        LocalDate endDate = parseDate(date);
+        LocalDate startDate = endDate.minusDays(lookbackDays);
         log.info("========== 趋势上涨选股开始 ==========");
-        log.info("参数：lookbackDays={} pointsPerNode={} windowNodes={} maxDeviation={} minNodes={} requireOverallUp={} excludeSt={} markets={}",
-                lookbackDays, pointsPerNode, windowNodes, maxDeviation, minNodes, requireOverallUp, excludeSt, markets);
+        log.info("参数：endDate={} startDate={} lookbackDays={} pointsPerNode={} windowNodes={} maxDeviation={} minNodes={} requireOverallUp={} excludeSt={} markets={}",
+                endDate, startDate, lookbackDays, pointsPerNode, windowNodes, maxDeviation, minNodes, requireOverallUp, excludeSt, markets);
 
         // 1. 查询候选股票基础信息
         List<Stock> stocks = stockMapper.selectStocksByMarkets(parseMarkets());
@@ -118,10 +122,8 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
         log.info("候选股票 {} 只（已排除 ST {} 只）", stockMap.size(), stocks.size() - stockMap.size());
 
         // 2. 批量拉取日K线
-        String endDate = LocalDate.now().toString();
-        String startDate = LocalDate.now().minusDays(lookbackDays).toString();
         List<String> codes = new ArrayList<>(stockMap.keySet());
-        List<StockKline> allKlines = stockKlineMapper.selectKlineByCodesAndDays(codes, "D", startDate, endDate);
+        List<StockKline> allKlines = stockKlineMapper.selectKlineByCodesAndDays(codes, "D", startDate.toString(), endDate.toString());
         log.info("K线数据总量: {}", allKlines != null ? allKlines.size() : 0);
 
         Map<String, List<StockKline>> klineMap = (allKlines == null)
@@ -146,7 +148,7 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
             return;
         }
 
-        createGroup(matched);
+        createGroup(matched, endDate);
         log.info("========== 趋势上涨选股完成 ==========");
     }
 
@@ -172,7 +174,8 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
                 closes.add(kl.getClosePrice().doubleValue());
             }
         }
-        if (closes.size() < 2)
+        // 历史数据不足 pointsPerNode*minNodes 直接过滤
+        if (closes.size() < pointsPerNode * minNodes)
         {
             return false;
         }
@@ -260,15 +263,15 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     /**
      * 生成趋势上涨分组
      */
-    private void createGroup(List<Stock> matched)
+    private void createGroup(List<Stock> matched, LocalDate endDate)
     {
-        String groupName = "趋势上涨选股_" + LocalDate.now().toString();
+        String groupName = "趋势上涨选股_" + endDate + "_" + pointsPerNode;
         StockGroup group = new StockGroup();
         group.setGroupName(groupName);
         group.setStockCodes(matched.stream().map(Stock::getStockCode).toArray(String[]::new));
         group.setCreateBy("system");
-        group.setRemark(String.format("最近%d日自收盘最低点上涨，每%d点成节点，每%d节点偏离<%d（命中%d只）",
-                lookbackDays, pointsPerNode, windowNodes, maxDeviation, matched.size()));
+        group.setRemark(String.format("截止%s往前%d日自收盘最低点上涨，每%d点成节点，每%d节点偏离<%d（命中%d只）",
+                endDate, lookbackDays, pointsPerNode, windowNodes, maxDeviation, matched.size()));
 
         stockGroupService.insertGroup(group);
 
@@ -276,6 +279,26 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
         for (Stock s : matched)
         {
             log.info("    {} {}", s.getStockCode(), s.getStockName());
+        }
+    }
+
+    /**
+     * 解析截止日期：入参为空或解析失败时默认当天
+     */
+    private LocalDate parseDate(String date)
+    {
+        if (date == null || date.trim().isEmpty())
+        {
+            return LocalDate.now();
+        }
+        try
+        {
+            return LocalDate.parse(date.trim());
+        }
+        catch (Exception e)
+        {
+            log.warn("日期参数 [{}] 解析失败，使用当前日期", date);
+            return LocalDate.now();
         }
     }
 

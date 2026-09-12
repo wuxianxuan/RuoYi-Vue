@@ -9,10 +9,11 @@ import org.springframework.stereotype.Component;
 /**
  * 趋势上涨选股定时任务
  *
- * 查询最近 a 日K线，从收盘价最低的那天到最近一天，每 b 个点整合成一个节点，
+ * 以指定日期（入参，为空则当天）为截止日，往前回看默认 90 个日历日K线，
+ * 从收盘价最低的那天到最近一天，每 b 个点整合成一个节点，
  * 检查节点链是否逐步上涨（每 x 个节点中少于 y 个节点偏离上涨趋势），命中股票生成一个新分组。
  * 建议 cron: 0 40 16 ? * MON-FRI（每个交易日下午16:40，依赖 K线同步 stockKlineSyncTask 已完成）。
- * 通过 RuoYi 定时任务管理页面配置，调用目标字符串: stockRisingTrendTask.execute()
+ * 通过 RuoYi 定时任务管理页面配置，调用目标字符串: stockRisingTrendTask.execute(日期) 或 stockRisingTrendTask.execute()
  */
 @Component("stockRisingTrendTask")
 public class StockRisingTrendTask
@@ -23,14 +24,14 @@ public class StockRisingTrendTask
     private IStockRisingTrendService stockRisingTrendService;
 
     /**
-     * 执行趋势上涨选股
+     * 执行趋势上涨选股（无入参日期，默认当天）
      */
     public void execute()
     {
         log.info("开始执行趋势上涨选股...");
         try
         {
-            stockRisingTrendService.execute();
+            stockRisingTrendService.execute(null);
         }
         catch (Exception e)
         {
@@ -39,12 +40,20 @@ public class StockRisingTrendTask
     }
 
     /**
-     * 带参入口（参数预留，当前无参也走同一逻辑）
+     * 带参入口：入参为截止日期（yyyy-MM-dd），为空则默认当天
      *
-     * @param params 参数（预留扩展）
+     * @param params 截止日期（yyyy-MM-dd）
      */
     public void execute(String params)
     {
-        execute();
+        log.info("开始执行趋势上涨选股（截止日期：{}）...", params);
+        try
+        {
+            stockRisingTrendService.execute(params);
+        }
+        catch (Exception e)
+        {
+            log.error("趋势上涨选股执行失败", e);
+        }
     }
 }
