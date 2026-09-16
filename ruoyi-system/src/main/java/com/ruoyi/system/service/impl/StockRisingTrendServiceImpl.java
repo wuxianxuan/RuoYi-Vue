@@ -28,6 +28,7 @@ import java.util.stream.Collectors;
  * 算法流程（对每只股票）：
  *   1. 以截止日期（入参，为空则当天）往前回看 lookbackDays 个日历日的日K线；
  *   2. 按交易日升序，找到「收盘价最低」的那天作为起点，切片 [最低日, 最新日]；
+ *      最低日距最新交易日需至少 minLowDays 个交易日，否则过滤；
  *   3. 每 pointsPerNode 个收盘价取均值整合成一个节点，形成节点链；
  *   4. 判定节点链是否逐步上涨：任意连续 windowNodes 个节点的窗口内，
  *      节点相对前一节点下跌的次数必须 < maxDeviation（允许偶尔偏差）。
@@ -83,6 +84,10 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     @Value("${stock.rising-trend.markets:SH,SZ,BJ}")
     private String markets;
 
+    /** 最低收盘价那天距最新交易日的最小间隔（交易日数/K线根数，>= 该值才参与判定） */
+    @Value("${stock.rising-trend.min-low-days:0}")
+    private int minLowDays;
+
     @Override
     public void execute(String date)
     {
@@ -90,8 +95,8 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
         LocalDate endDate = parseDate(date);
         LocalDate startDate = endDate.minusDays(lookbackDays);
         log.info("========== 趋势上涨选股开始 ==========");
-        log.info("参数：endDate={} startDate={} lookbackDays={} pointsPerNode={} windowNodes={} maxDeviation={} minNodes={} requireOverallUp={} excludeSt={} markets={}",
-                endDate, startDate, lookbackDays, pointsPerNode, windowNodes, maxDeviation, minNodes, requireOverallUp, excludeSt, markets);
+        log.info("参数：endDate={} startDate={} lookbackDays={} pointsPerNode={} windowNodes={} maxDeviation={} minNodes={} minLowDays={} requireOverallUp={} excludeSt={} markets={}",
+                endDate, startDate, lookbackDays, pointsPerNode, windowNodes, maxDeviation, minNodes, minLowDays, requireOverallUp, excludeSt, markets);
 
         // 1. 查询候选股票基础信息
         List<Stock> stocks = stockMapper.selectStocksByMarkets(parseMarkets());
@@ -194,6 +199,11 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
             // 最低点就是最新一天，无上升空间
             return false;
         }
+        // 最低那天距最新交易日至少 minLowDays 个交易日（K线根数），否则说明上涨趋势尚未确立
+        if (closes.size() - 1 - minIdx < minLowDays)
+        {
+            return false;
+        }
         List<Double> seg = closes.subList(minIdx, closes.size());
 
         // 每 pointsPerNode 个点取均值整合成一个节点（忽略末尾不足一组的点）
@@ -270,8 +280,8 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
         group.setGroupName(groupName);
         group.setStockCodes(matched.stream().map(Stock::getStockCode).toArray(String[]::new));
         group.setCreateBy("system");
-        group.setRemark(String.format("截止%s往前%d日自收盘最低点上涨，每%d点成节点，每%d节点偏离<%d（命中%d只）",
-                endDate, lookbackDays, pointsPerNode, windowNodes, maxDeviation, matched.size()));
+        group.setRemark(String.format("截止%s往前%d日自收盘最低点上涨（最低日距最新≥%d交易日），每%d点成节点，每%d节点偏离<%d（命中%d只）",
+                endDate, lookbackDays, minLowDays, pointsPerNode, windowNodes, maxDeviation, matched.size()));
 
         stockGroupService.insertGroup(group);
 

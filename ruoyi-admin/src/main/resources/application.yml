@@ -196,15 +196,17 @@ stock:
   # 趋势上涨选股配置
   rising-trend:
     # 历史回看日历天数（a，默认90，可配置）
-    lookback-days: 90
+    lookback-days: 35
     # 每个节点整合的K线点数（b）
-    points-per-node: 3
+    points-per-node: 2
     # 偏离判定的滑动窗口大小（x，每 x 个节点）
-    window-nodes: 7
+    window-nodes: 10
     # 每个窗口内允许的最大偏离次数（y，偏离次数必须 < 该值）
     max-deviation: 1
     # 最少节点数，低于该值不参与判定
-    min-nodes: 5
+    min-nodes: 2
+    # 最低收盘价那天距最新交易日的最小间隔（交易日数/K线根数，>= 该值才参与判定）
+    min-low-days: 8
     # 是否要求整体上涨（末节点 > 首节点）
     require-overall-up: true
     # 是否排除 ST/*ST 股票
