@@ -2,9 +2,11 @@ package com.ruoyi.web.controller.stock;
 
 import java.util.List;
 import java.util.Map;
+import java.io.IOException;
 
 import com.ruoyi.system.domain.stock.Stock;
 import com.ruoyi.system.domain.stock.StockPlate;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -97,6 +99,32 @@ public class StockPlateController extends BaseController {
     public AjaxResult conceptList() {
         List<StockPlate> list = stockPlateService.selectConceptPlateList();
         return success(list);
+    }
+
+    /**
+     * 导出重点关注板块代码（TXT，一行一个板块代码，包含行业与概念）
+     */
+    @Log(title = "板块管理", businessType = BusinessType.EXPORT)
+    @PostMapping("/exportFocusCodes")
+    public void exportFocusCodes(HttpServletResponse response) throws IOException
+    {
+        StockPlate query = new StockPlate();
+        query.setFocusFlag(1);
+        List<StockPlate> list = stockPlateService.selectPlateList(query);
+        StringBuilder sb = new StringBuilder();
+        if (list != null)
+        {
+            for (StockPlate p : list)
+            {
+                if (p.getPlateCode() != null && !p.getPlateCode().isEmpty())
+                {
+                    sb.append(p.getPlateCode()).append("\n");
+                }
+            }
+        }
+        response.setContentType("text/plain;charset=utf-8");
+        response.setHeader("Content-Disposition", "attachment; filename=focus_plate_codes.txt");
+        response.getWriter().write(sb.toString());
     }
 
     /**
