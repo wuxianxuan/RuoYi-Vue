@@ -90,6 +90,15 @@
                     </foreach>
                 )
             </if>
+            <if test="excludeGroupIds != null and excludeGroupIds.length > 0">
+                and NOT EXISTS (
+                    select 1 from stock_group_stock sgs_ex
+                    where sgs_ex.stock_code = s.stock_code and sgs_ex.group_id in
+                    <foreach item="groupId" collection="excludeGroupIds" open="(" separator="," close=")">
+                        #{groupId}
+                    </foreach>
+                )
+            </if>
             <if test="minLimitUpCount != null">
                 and ifnull(ls.limit_up_count, 0) &gt;= #{minLimitUpCount}
             </if>

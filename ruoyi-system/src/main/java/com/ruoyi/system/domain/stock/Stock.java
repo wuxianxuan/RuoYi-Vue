@@ -104,6 +104,9 @@ public class Stock extends BaseEntity
     /** 分组筛选参数（非持久化，支持多选） */
     private Long[] groupIds;
 
+    /** 排除分组筛选参数（非持久化，支持多选，用于"分组2较分组1多出股票"等场景） */
+    private Long[] excludeGroupIds;
+
     /** 涨停数（近30天，含今天，列表展示用，非持久化） */
     @Excel(name = "涨停数", sort = 7)
     private Integer limitUpCount;
@@ -324,6 +327,16 @@ public class Stock extends BaseEntity
     public void setGroupIds(Long[] groupIds)
     {
         this.groupIds = groupIds;
+    }
+
+    public Long[] getExcludeGroupIds()
+    {
+        return excludeGroupIds;
+    }
+
+    public void setExcludeGroupIds(Long[] excludeGroupIds)
+    {
+        this.excludeGroupIds = excludeGroupIds;
     }
 
     public Integer getLimitUpCount()
