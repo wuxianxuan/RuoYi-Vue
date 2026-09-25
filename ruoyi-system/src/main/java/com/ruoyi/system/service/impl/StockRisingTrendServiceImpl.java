@@ -27,12 +27,16 @@ import java.util.stream.Collectors;
  *
  * 算法流程（对每只股票）：
  *   1. 以截止日期（入参，为空则当天）往前回看 lookbackDays 个日历日的日K线；
- *   2. 按交易日升序，找到「收盘价最低」的那天作为起点，切片 [最低日, 最新日]；
- *      最低日距最新交易日需至少 minLowDays 个交易日，否则过滤；
- *   3. 每 pointsPerNode 个收盘价取均值整合成一个节点，形成节点链；
- *   4. 判定节点链是否逐步上涨：任意连续 windowNodes 个节点的窗口内，
- *      节点相对前一节点下跌的次数必须 < maxDeviation（允许偶尔偏差）。
- * 收盘价数量不足 pointsPerNode*minNodes 的股票直接过滤。
+ *   2. 排除创业板/科创板（无交易权限），排除 ST/*ST 股票；
+ *   3. 找到「收盘价最低」的那天作为起点，切片 [最低日, 最新日]；
+ *      最低日到最新日合计需至少 minLowDays 根K线（含端点），否则过滤；
+ *   4. 切片链上任一天都不得为涨停（相对前收涨幅 >= limitUpThreshold%），涨停说明已爆发；
+ *   5. 每 pointsPerNode 个收盘价取均值整合成一个节点（末尾不足一组向前借用补足）；
+ *   6. 判定节点链逐步上涨：
+ *      - 整体上涨：末节点 > 首节点；
+ *      - 偏离次数 <= ceil(节点数 * maxDeviationRatio)；
+ *      - 偏离程度（偏离累计跌幅 / (最高点-最低点)）<= maxDeviationDegree。
+ * 收盘价数量不足 pointsPerNode*minKlines 的股票直接过滤。
  *
  * 命中股票生成一个新分组（分组名含截止日期与 pointsPerNode）。
  *
@@ -53,24 +57,16 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     private IStockGroupService stockGroupService;
 
     /** 回看日历天数（a） */
-    @Value("${stock.rising-trend.lookback-days:60}")
+    @Value("${stock.rising-trend.lookback-days:30}")
     private int lookbackDays;
 
     /** 每个节点整合的K线点数（b） */
-    @Value("${stock.rising-trend.points-per-node:3}")
+    @Value("${stock.rising-trend.points-per-node:1}")
     private int pointsPerNode;
 
-    /** 偏离判定的滑动窗口大小，每 x 个节点（x） */
-    @Value("${stock.rising-trend.window-nodes:10}")
-    private int windowNodes;
-
-    /** 每个窗口内允许的最大偏离（下跌）次数（y，偏离次数必须 < 该值） */
-    @Value("${stock.rising-trend.max-deviation:2}")
-    private int maxDeviation;
-
-    /** 最少节点数，低于该值不参与判定 */
-    @Value("${stock.rising-trend.min-nodes:5}")
-    private int minNodes;
+    /** 最少K线数（仅用于收盘价数量下限判定：收盘价数量 < pointsPerNode * minKlines 则过滤） */
+    @Value("${stock.rising-trend.min-klines:15}")
+    private int minKlines;
 
     /** 是否要求整体上涨（末节点 > 首节点） */
     @Value("${stock.rising-trend.require-overall-up:true}")
@@ -81,12 +77,28 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     private boolean excludeSt;
 
     /** 扫描市场列表（逗号分隔） */
-    @Value("${stock.rising-trend.markets:SH,SZ,BJ}")
+    @Value("${stock.rising-trend.markets:SH,SZ}")
     private String markets;
 
-    /** 最低收盘价那天距最新交易日的最小间隔（交易日数/K线根数，>= 该值才参与判定） */
-    @Value("${stock.rising-trend.min-low-days:0}")
+    /** 最低点到最新点的最少K线根数（含端点，合计 < 该值则过滤，确保上涨趋势已确立） */
+    @Value("${stock.rising-trend.min-low-days:5}")
     private int minLowDays;
+
+    /** 偏离数量上限比例：整个节点链上偏离（下跌）次数 <= ceil(节点数 * 该值) */
+    @Value("${stock.rising-trend.max-deviation-ratio:0.2}")
+    private double maxDeviationRatio;
+
+    /** 偏离程度上限比例：偏离累计跌幅 / (最高点 - 最低点) <= 该值 */
+    @Value("${stock.rising-trend.max-deviation-degree:0.2}")
+    private double maxDeviationDegree;
+
+    /** 涨停判定阈值(%)：切片链上任一天相对前收涨幅 >= 该值视为涨停，直接过滤 */
+    @Value("${stock.rising-trend.limit-up-threshold:9.8}")
+    private double limitUpThreshold;
+
+    /** 排除的板块代码前缀（逗号分隔），默认排除创业板(300/301)、科创板(688/689) */
+    @Value("${stock.rising-trend.exclude-code-prefixes:300,301,688,689}")
+    private String excludeCodePrefixes;
 
     @Override
     public void execute(String date)
@@ -95,8 +107,8 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
         LocalDate endDate = parseDate(date);
         LocalDate startDate = endDate.minusDays(lookbackDays);
         log.info("========== 趋势上涨选股开始 ==========");
-        log.info("参数：endDate={} startDate={} lookbackDays={} pointsPerNode={} windowNodes={} maxDeviation={} minNodes={} minLowDays={} requireOverallUp={} excludeSt={} markets={}",
-                endDate, startDate, lookbackDays, pointsPerNode, windowNodes, maxDeviation, minNodes, minLowDays, requireOverallUp, excludeSt, markets);
+        log.info("参数：endDate={} startDate={} lookbackDays={} pointsPerNode={} minKlines={} minLowDays={} requireOverallUp={} excludeSt={} markets={} excludeCodePrefixes={} maxDeviationRatio={} maxDeviationDegree={} limitUpThreshold={}",
+                endDate, startDate, lookbackDays, pointsPerNode, minKlines, minLowDays, requireOverallUp, excludeSt, markets, excludeCodePrefixes, maxDeviationRatio, maxDeviationDegree, limitUpThreshold);
 
         // 1. 查询候选股票基础信息
         List<Stock> stocks = stockMapper.selectStocksByMarkets(parseMarkets());
@@ -106,6 +118,7 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
             return;
         }
 
+        List<String> excludePrefixes = parseExcludePrefixes();
         Map<String, Stock> stockMap = new LinkedHashMap<>();
         for (Stock s : stocks)
         {
@@ -117,6 +130,10 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
             {
                 continue;
             }
+            if (startsWithAny(s.getStockCode(), excludePrefixes))
+            {
+                continue;
+            }
             stockMap.put(s.getStockCode(), s);
         }
         if (stockMap.isEmpty())
@@ -124,7 +141,7 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
             log.warn("过滤后无候选股票，跳过选股");
             return;
         }
-        log.info("候选股票 {} 只（已排除 ST {} 只）", stockMap.size(), stocks.size() - stockMap.size());
+        log.info("候选股票 {} 只（过滤掉 {} 只）", stockMap.size(), stocks.size() - stockMap.size());
 
         // 2. 批量拉取日K线
         List<String> codes = new ArrayList<>(stockMap.keySet());
@@ -179,39 +196,69 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
                 closes.add(kl.getClosePrice().doubleValue());
             }
         }
-        // 历史数据不足 pointsPerNode*minNodes 直接过滤
-        if (closes.size() < pointsPerNode * minNodes)
+        // 历史数据不足 pointsPerNode*minKlines 直接过滤
+        if (closes.size() < pointsPerNode * minKlines)
         {
             return false;
         }
 
+        int closeCount = closes.size();
+
         // 找到收盘价最低的那天，作为起点切片到最新
         int minIdx = 0;
-        for (int i = 1; i < closes.size(); i++)
+        for (int i = 1; i < closeCount; i++)
         {
             if (closes.get(i) < closes.get(minIdx))
             {
                 minIdx = i;
             }
         }
-        if (minIdx >= closes.size() - 1)
+        if (minIdx >= closeCount - 1)
         {
             // 最低点就是最新一天，无上升空间
             return false;
         }
-        // 最低那天距最新交易日至少 minLowDays 个交易日（K线根数），否则说明上涨趋势尚未确立
-        if (closes.size() - 1 - minIdx < minLowDays)
+        // 最低点到最新点合计需至少 minLowDays 根K线（含端点），否则上涨趋势尚未确立
+        if (closeCount - minIdx < minLowDays)
         {
             return false;
         }
-        List<Double> seg = closes.subList(minIdx, closes.size());
 
-        // 每 pointsPerNode 个点取均值整合成一个节点（忽略末尾不足一组的点）
-        List<Double> nodes = new ArrayList<>();
-        for (int i = 0; i + pointsPerNode <= seg.size(); i += pointsPerNode)
+        // 从最低点到最新点的整个链上，任一天都不得为涨停（相对前收涨幅 >= limitUpThreshold%），涨停说明已爆发
+        for (int i = minIdx; i < closeCount; i++)
         {
+            if (i == 0)
+            {
+                continue;
+            }
+            double prevClose = closes.get(i - 1);
+            double curClose = closes.get(i);
+            if (prevClose > 0 && (curClose - prevClose) / prevClose * 100 >= limitUpThreshold)
+            {
+                return false;
+            }
+        }
+
+        List<Double> seg = closes.subList(minIdx, closeCount);
+        if (seg.size() < pointsPerNode)
+        {
+            return false;
+        }
+
+        // 每 pointsPerNode 个点取均值整合成一个节点，末尾不足一组向前借用K线补足
+        List<Double> nodes = new ArrayList<>();
+        for (int i = 0; i < seg.size(); i += pointsPerNode)
+        {
+            int from = i;
+            int to = i + pointsPerNode;
+            if (to > seg.size())
+            {
+                // 末尾不足一组：向前拿几根K线补足一组的数量
+                from = seg.size() - pointsPerNode;
+                to = seg.size();
+            }
             double sum = 0;
-            for (int k = i; k < i + pointsPerNode; k++)
+            for (int k = from; k < to; k++)
             {
                 sum += seg.get(k);
             }
@@ -219,10 +266,6 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
         }
 
         int n = nodes.size();
-        if (n < minNodes)
-        {
-            return false;
-        }
 
         // 整体上涨约束：末节点 > 首节点
         if (requireOverallUp && nodes.get(n - 1) <= nodes.get(0))
@@ -230,41 +273,42 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
             return false;
         }
 
-        // 偏离判定：节点相对前一节点下跌算一次偏离
-        if (n >= windowNodes)
+        // 偏离判定：节点相对前一节点下跌算一次偏离，同时累计偏离幅度与最高/最低点
+        int dev = 0;
+        double dropSum = 0;
+        double maxNode = nodes.get(0);
+        double minNode = nodes.get(0);
+        for (int i = 1; i < n; i++)
         {
-            // 滑动窗口：任意连续 windowNodes 个节点内，下跌次数必须 < maxDeviation
-            for (int j = 0; j + windowNodes <= n; j++)
+            double cur = nodes.get(i);
+            double pre = nodes.get(i - 1);
+            if (cur < pre)
             {
-                int dev = 0;
-                for (int i = j + 1; i < j + windowNodes; i++)
-                {
-                    if (nodes.get(i) < nodes.get(i - 1))
-                    {
-                        dev++;
-                    }
-                }
-                if (dev >= maxDeviation)
-                {
-                    return false;
-                }
+                dev++;
+                dropSum += pre - cur;
+            }
+            if (cur > maxNode)
+            {
+                maxNode = cur;
+            }
+            if (cur < minNode)
+            {
+                minNode = cur;
             }
         }
-        else
+
+        // 偏离次数不能大于 ceil(节点数 * maxDeviationRatio)
+        int maxDeviationCount = (int) Math.ceil(n * maxDeviationRatio);
+        if (dev > maxDeviationCount)
         {
-            // 节点数不足一个窗口时退化为全局下跌计数
-            int dev = 0;
-            for (int i = 1; i < n; i++)
-            {
-                if (nodes.get(i) < nodes.get(i - 1))
-                {
-                    dev++;
-                }
-            }
-            if (dev >= maxDeviation)
-            {
-                return false;
-            }
+            return false;
+        }
+
+        // 偏离程度 = 偏离累计跌幅 / (最高点 - 最低点)，不能超过 maxDeviationDegree
+        double range = maxNode - minNode;
+        if (range > 0 && dropSum / range > maxDeviationDegree)
+        {
+            return false;
         }
 
         return true;
@@ -276,12 +320,29 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     private void createGroup(List<Stock> matched, LocalDate endDate)
     {
         String groupName = "趋势上涨选股_" + endDate + "_" + pointsPerNode;
+
+        // 幂等：同名分组已存在则跳过，避免重复生成
+        StockGroup query = new StockGroup();
+        query.setGroupName(groupName);
+        List<StockGroup> existing = stockGroupService.selectGroupList(query);
+        if (existing != null)
+        {
+            for (StockGroup g : existing)
+            {
+                if (groupName.equals(g.getGroupName()))
+                {
+                    log.info("分组 [{}] 已存在，跳过本次生成", groupName);
+                    return;
+                }
+            }
+        }
+
         StockGroup group = new StockGroup();
         group.setGroupName(groupName);
         group.setStockCodes(matched.stream().map(Stock::getStockCode).toArray(String[]::new));
         group.setCreateBy("system");
-        group.setRemark(String.format("截止%s往前%d日自收盘最低点上涨（最低日距最新≥%d交易日），每%d点成节点，每%d节点偏离<%d（命中%d只）",
-                endDate, lookbackDays, minLowDays, pointsPerNode, windowNodes, maxDeviation, matched.size()));
+        group.setRemark(String.format("截止%s往前%d日自收盘最低点上涨（最低日到最新≥%d根K线，链上无涨停），每%d点成节点，偏离次数≤ceil(n*%.0f%%)且偏离程度≤%.0f%%（命中%d只）",
+                endDate, lookbackDays, minLowDays, pointsPerNode, maxDeviationRatio * 100, maxDeviationDegree * 100, matched.size()));
 
         stockGroupService.insertGroup(group);
 
@@ -319,11 +380,41 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     {
         if (markets == null || markets.trim().isEmpty())
         {
-            return Arrays.asList("SH", "SZ", "BJ");
+            return Arrays.asList("SH", "SZ");
         }
         return Arrays.stream(markets.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 解析排除板块代码前缀配置
+     */
+    private List<String> parseExcludePrefixes()
+    {
+        if (excludeCodePrefixes == null || excludeCodePrefixes.trim().isEmpty())
+        {
+            return Arrays.asList("300", "301", "688", "689");
+        }
+        return Arrays.stream(excludeCodePrefixes.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 判断股票代码是否命中任一排除前缀（创业板/科创板等无交易权限板块）
+     */
+    private boolean startsWithAny(String code, List<String> prefixes)
+    {
+        for (String prefix : prefixes)
+        {
+            if (code.startsWith(prefix))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 }
