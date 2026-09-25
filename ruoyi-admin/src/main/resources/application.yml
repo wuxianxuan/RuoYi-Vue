@@ -217,22 +217,4 @@ stock:
     limit-up-threshold: 9.8
     # 排除的板块代码前缀（逗号分隔），默认排除创业板(300/301)、科创板(688/689)
     exclude-code-prefixes: 300,301,688,689
-  # 偷偷上涨选股配置
-  stealth-rally:
-    # 观察交易日数
-    lookback-days: 30
-    # 累计涨幅下限（%）
-    min-gain: 5.0
-    # 累计涨幅上限（%）
-    max-gain: 30.0
-    # 缩量比（后段均量/前段均量 < 该值）
-    shrink-ratio: 0.9
-    # 日均换手率上限（%）
-    max-turnover: 3.0
-    # 日均振幅上限（%）
-    max-amplitude: 4.0
-    # 是否排除 ST/*ST 股票
-    exclude-st: true
-    # 扫描市场列表（逗号分隔）
-    markets: SH,SZ
 
