@@ -38,4 +38,20 @@
         </foreach>
     </insert>
 
+    <select id="selectRecentTradeDates" resultType="java.util.Date">
+        select distinct trade_date
+        from stock_daily_quote
+        order by trade_date desc
+        limit #{limit}
+    </select>
+
+    <select id="selectByTradeDates" parameterType="java.util.List" resultMap="StockDailyQuoteResult">
+        select *
+        from stock_daily_quote
+        where trade_date in
+        <foreach collection="dates" item="d" open="(" separator="," close=")">
+            #{d}
+        </foreach>
+    </select>
+
 </mapper>
