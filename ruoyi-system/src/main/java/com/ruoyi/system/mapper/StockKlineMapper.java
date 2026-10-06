@@ -28,4 +28,10 @@ public interface StockKlineMapper {
                                                        @Param("klineType") String klineType,
                                                        @Param("startDate") String startDate,
                                                        @Param("endDate") String endDate);
+
+    /**
+     * 批量查询股票年初基准收盘价（上年最后一个交易日收盘价），返回 stock_code 与 closePrice
+     */
+    public List<java.util.Map<String, Object>> selectYearStartCloseByStockCodes(@Param("stockCodes") List<String> stockCodes,
+                                                                                @Param("yearStartDate") String yearStartDate);
 }

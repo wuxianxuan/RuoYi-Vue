@@ -121,4 +121,20 @@
         order by stock_code asc, trade_time asc
     </select>
 
+    <select id="selectYearStartCloseByStockCodes" resultType="java.util.HashMap">
+        select sk.stock_code as stockCode, sk.close_price as closePrice
+        from stock_kline sk
+        inner join (
+            select stock_code, max(trade_time) as lastTradeTime
+            from stock_kline
+            where kline_type = 'D'
+            and trade_time &lt; #{yearStartDate}
+            and stock_code in
+            <foreach item="stockCode" collection="stockCodes" open="(" separator="," close=")">
+                #{stockCode}
+            </foreach>
+            group by stock_code
+        ) t on sk.stock_code = t.stock_code and sk.trade_time = t.lastTradeTime and sk.kline_type = 'D'
+    </select>
+
 </mapper>

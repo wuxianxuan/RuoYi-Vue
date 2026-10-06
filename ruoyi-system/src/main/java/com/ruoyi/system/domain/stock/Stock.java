@@ -59,6 +59,10 @@ public class Stock extends BaseEntity
     @Excel(name = "涨跌幅(%)", sort = 12)
     private BigDecimal changeRate;
 
+    /** 年初至今涨幅(%)（非持久化，展示用，基准为上年末收盘价） */
+    @Excel(name = "年初至今涨幅(%)", sort = 22)
+    private BigDecimal ytdChangeRate;
+
     /** 涨跌 */
     @Excel(name = "涨跌", sort = 13)
     private BigDecimal priceChange;
@@ -237,6 +241,9 @@ public class Stock extends BaseEntity
 
     public void setChangeRate(BigDecimal changeRate) { this.changeRate = changeRate; }
     public BigDecimal getChangeRate() { return changeRate; }
+
+    public void setYtdChangeRate(BigDecimal ytdChangeRate) { this.ytdChangeRate = ytdChangeRate; }
+    public BigDecimal getYtdChangeRate() { return ytdChangeRate; }
 
     public void setPriceChange(BigDecimal priceChange) { this.priceChange = priceChange; }
     public BigDecimal getPriceChange() { return priceChange; }
