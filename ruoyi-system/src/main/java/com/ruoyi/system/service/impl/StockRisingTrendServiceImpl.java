@@ -18,8 +18,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -31,14 +33,15 @@ import java.util.stream.Collectors;
  *   3. 找到「收盘价最低」的那天作为起点，切片 [最低日, 最新日]；
  *      最低日到最新日合计需至少 minLowDays 根K线（含端点），否则过滤；
  *   4. 切片链上任一天都不得为涨停（相对前收涨幅 >= limitUpThreshold%），涨停说明已爆发；
- *   5. 每 pointsPerNode 个收盘价取均值整合成一个节点（末尾不足一组向前借用补足）；
- *   6. 判定节点链逐步上涨：
+ *   5. 上涨切片内任一天相对前收涨幅都不得低于 minDailyGain%（过滤日涨幅过低的数据）；
+ *   6. 每 pointsPerNode 个收盘价取均值整合成一个节点（末尾不足一组向前借用补足）；
+ *   7. 判定节点链逐步上涨：
  *      - 整体上涨：末节点 > 首节点；
  *      - 偏离次数 <= ceil(节点数 * maxDeviationRatio)；
  *      - 偏离程度（偏离累计跌幅 / (最高点-最低点)）<= maxDeviationDegree。
  * 收盘价数量不足 pointsPerNode*minKlines 的股票直接过滤。
  *
- * 命中股票生成一个新分组（分组名含截止日期与 pointsPerNode）。
+ * 命中股票累加进固定分组（分组名不含日期，首次执行自动创建，之后每次执行将新命中股票合并进该分组）。
  *
  * @author ruoyi
  */
@@ -80,6 +83,10 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     @Value("${stock.rising-trend.markets:SH,SZ}")
     private String markets;
 
+    /** 目标分组名称（固定名，不随日期变化；首次执行自动创建，之后每次执行将新命中股票累加进该分组） */
+    @Value("${stock.rising-trend.group-name:趋势上涨选股}")
+    private String groupName;
+
     /** 最低点到最新点的最少K线根数（含端点，合计 < 该值则过滤，确保上涨趋势已确立） */
     @Value("${stock.rising-trend.min-low-days:5}")
     private int minLowDays;
@@ -96,6 +103,10 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     @Value("${stock.rising-trend.limit-up-threshold:9.8}")
     private double limitUpThreshold;
 
+    /** 单日最小涨幅下限(%)：上涨切片内任一天相对前收涨幅 < 该值则过滤（用于过滤日涨幅过低的数据） */
+    @Value("${stock.rising-trend.min-daily-gain:0}")
+    private double minDailyGain;
+
     /** 排除的板块代码前缀（逗号分隔），默认排除创业板(300/301)、科创板(688/689) */
     @Value("${stock.rising-trend.exclude-code-prefixes:300,301,688,689}")
     private String excludeCodePrefixes;
@@ -107,8 +118,8 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
         LocalDate endDate = parseDate(date);
         LocalDate startDate = endDate.minusDays(lookbackDays);
         log.info("========== 趋势上涨选股开始 ==========");
-        log.info("参数：endDate={} startDate={} lookbackDays={} pointsPerNode={} minKlines={} minLowDays={} requireOverallUp={} excludeSt={} markets={} excludeCodePrefixes={} maxDeviationRatio={} maxDeviationDegree={} limitUpThreshold={}",
-                endDate, startDate, lookbackDays, pointsPerNode, minKlines, minLowDays, requireOverallUp, excludeSt, markets, excludeCodePrefixes, maxDeviationRatio, maxDeviationDegree, limitUpThreshold);
+        log.info("参数：endDate={} startDate={} lookbackDays={} pointsPerNode={} minKlines={} minLowDays={} requireOverallUp={} excludeSt={} markets={} excludeCodePrefixes={} maxDeviationRatio={} maxDeviationDegree={} limitUpThreshold={} minDailyGain={} groupName={}",
+                endDate, startDate, lookbackDays, pointsPerNode, minKlines, minLowDays, requireOverallUp, excludeSt, markets, excludeCodePrefixes, maxDeviationRatio, maxDeviationDegree, limitUpThreshold, minDailyGain, groupName);
 
         // 1. 查询候选股票基础信息
         List<Stock> stocks = stockMapper.selectStocksByMarkets(parseMarkets());
@@ -170,7 +181,7 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
             return;
         }
 
-        createGroup(matched, endDate);
+        mergeIntoGroup(matched, endDate);
         log.info("========== 趋势上涨选股完成 ==========");
     }
 
@@ -234,6 +245,18 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
             double prevClose = closes.get(i - 1);
             double curClose = closes.get(i);
             if (prevClose > 0 && (curClose - prevClose) / prevClose * 100 >= limitUpThreshold)
+            {
+                return false;
+            }
+        }
+
+        // 单日最小涨幅下限：上涨切片内任一天相对前收涨幅 < minDailyGain 则过滤（过滤日涨幅过低的数据）。
+        // 从最低点次日开始计算，避免最低点当天（本身就是下跌日）被误杀。
+        for (int i = minIdx + 1; i < closeCount; i++)
+        {
+            double prevClose = closes.get(i - 1);
+            double curClose = closes.get(i);
+            if (prevClose > 0 && (curClose - prevClose) / prevClose * 100 < minDailyGain)
             {
                 return false;
             }
@@ -315,42 +338,94 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     }
 
     /**
-     * 生成趋势上涨分组
+     * 将命中股票合并进固定分组：首次执行自动创建分组，之后每次执行把新命中的股票追加进该分组（去重）
      */
-    private void createGroup(List<Stock> matched, LocalDate endDate)
+    private void mergeIntoGroup(List<Stock> matched, LocalDate endDate)
     {
-        String groupName = "趋势上涨选股_" + endDate + "_" + pointsPerNode;
-
-        // 幂等：同名分组已存在则跳过，避免重复生成
+        // 1. 按固定分组名查找已有分组（不含日期）
         StockGroup query = new StockGroup();
         query.setGroupName(groupName);
-        List<StockGroup> existing = stockGroupService.selectGroupList(query);
-        if (existing != null)
+        StockGroup existing = null;
+        List<StockGroup> groups = stockGroupService.selectGroupList(query);
+        if (groups != null)
         {
-            for (StockGroup g : existing)
+            for (StockGroup g : groups)
             {
                 if (groupName.equals(g.getGroupName()))
                 {
-                    log.info("分组 [{}] 已存在，跳过本次生成", groupName);
-                    return;
+                    existing = g;
+                    break;
                 }
             }
         }
 
-        StockGroup group = new StockGroup();
-        group.setGroupName(groupName);
-        group.setStockCodes(matched.stream().map(Stock::getStockCode).toArray(String[]::new));
-        group.setCreateBy("system");
-        group.setRemark(String.format("截止%s往前%d日自收盘最低点上涨（最低日到最新≥%d根K线，链上无涨停），每%d点成节点，偏离次数≤ceil(n*%.0f%%)且偏离程度≤%.0f%%（命中%d只）",
-                endDate, lookbackDays, minLowDays, pointsPerNode, maxDeviationRatio * 100, maxDeviationDegree * 100, matched.size()));
+        // 2. 分组不存在则首次创建
+        if (existing == null)
+        {
+            StockGroup group = new StockGroup();
+            group.setGroupName(groupName);
+            group.setStockCodes(matched.stream().map(Stock::getStockCode).toArray(String[]::new));
+            group.setCreateBy("system");
+            group.setRemark(buildRemark(endDate, matched.size()));
+            stockGroupService.insertGroup(group);
+            log.info("首次创建分组 [{}]，命中 {} 只", groupName, matched.size());
+            for (Stock s : matched)
+            {
+                log.info("    {} {}", s.getStockCode(), s.getStockName());
+            }
+            return;
+        }
 
-        stockGroupService.insertGroup(group);
+        // 3. 分组已存在：合并现有股票与新命中股票（按股票代码去重）
+        Set<String> mergedCodes = new LinkedHashSet<>();
+        List<Stock> existingStocks = stockGroupService.selectStocksByGroupId(existing.getId());
+        if (existingStocks != null)
+        {
+            for (Stock s : existingStocks)
+            {
+                if (s.getStockCode() != null)
+                {
+                    mergedCodes.add(s.getStockCode());
+                }
+            }
+        }
 
-        log.info("分组 [{}] 命中 {} 只", groupName, matched.size());
+        List<String> addedCodes = new ArrayList<>();
         for (Stock s : matched)
         {
-            log.info("    {} {}", s.getStockCode(), s.getStockName());
+            if (s.getStockCode() != null && mergedCodes.add(s.getStockCode()))
+            {
+                addedCodes.add(s.getStockCode());
+            }
         }
+
+        if (addedCodes.isEmpty())
+        {
+            log.info("分组 [{}] 无新增股票，跳过", groupName);
+            return;
+        }
+
+        StockGroup update = new StockGroup();
+        update.setId(existing.getId());
+        update.setUpdateBy("system");
+        update.setRemark(buildRemark(endDate, mergedCodes.size()));
+        update.setStockCodes(mergedCodes.toArray(new String[0]));
+        stockGroupService.updateGroup(update);
+
+        log.info("分组 [{}] 本次新增 {} 只，累计 {} 只", groupName, addedCodes.size(), mergedCodes.size());
+        for (String code : addedCodes)
+        {
+            log.info("    {}", code);
+        }
+    }
+
+    /**
+     * 构造分组备注（描述筛选口径与累计命中数）
+     */
+    private String buildRemark(LocalDate endDate, int total)
+    {
+        return String.format("趋势上涨选股（截止%s往前%d日自收盘最低点上涨，最低日到最新≥%d根K线，链上无涨停、单日涨幅≥%.1f%%，每%d点成节点，偏离次数≤ceil(n*%.0f%%)且偏离程度≤%.0f%%，累计命中%d只）",
+                endDate, lookbackDays, minLowDays, minDailyGain, pointsPerNode, maxDeviationRatio * 100, maxDeviationDegree * 100, total);
     }
 
     /**
