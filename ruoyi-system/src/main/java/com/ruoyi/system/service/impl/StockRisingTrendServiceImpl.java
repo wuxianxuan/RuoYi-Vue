@@ -41,7 +41,7 @@ import java.util.stream.Collectors;
  *      - 偏离程度（偏离累计跌幅 / (最高点-最低点)）<= maxDeviationDegree。
  * 收盘价数量不足 pointsPerNode*minKlines 的股票直接过滤。
  *
- * 命中股票累加进固定分组（分组名不含日期，首次执行自动创建，之后每次执行将新命中股票合并进该分组）。
+ * 命中股票累加进固定分组（去重），同时额外生成一个含日期的当天快照分组，便于在两个分组间做重合筛选。
  *
  * @author ruoyi
  */
@@ -181,7 +181,9 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
             return;
         }
 
+        // 累加进固定分组（去重），并额外生成当天快照分组
         mergeIntoGroup(matched, endDate);
+        createDailyGroup(matched, endDate);
         log.info("========== 趋势上涨选股完成 ==========");
     }
 
@@ -366,7 +368,7 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
             group.setGroupName(groupName);
             group.setStockCodes(matched.stream().map(Stock::getStockCode).toArray(String[]::new));
             group.setCreateBy("system");
-            group.setRemark(buildRemark(endDate, matched.size()));
+            group.setRemark(buildRemark(groupName, endDate, matched.size(), true));
             stockGroupService.insertGroup(group);
             log.info("首次创建分组 [{}]，命中 {} 只", groupName, matched.size());
             for (Stock s : matched)
@@ -408,7 +410,7 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
         StockGroup update = new StockGroup();
         update.setId(existing.getId());
         update.setUpdateBy("system");
-        update.setRemark(buildRemark(endDate, mergedCodes.size()));
+        update.setRemark(buildRemark(groupName, endDate, mergedCodes.size(), true));
         update.setStockCodes(mergedCodes.toArray(new String[0]));
         stockGroupService.updateGroup(update);
 
@@ -420,12 +422,52 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     }
 
     /**
-     * 构造分组备注（描述筛选口径与累计命中数）
+     * 额外生成当天快照分组（分组名含日期，幂等：同名已存在则跳过），
+     * 便于在股票基础页面针对固定累加分组与当天分组做重合筛选。
      */
-    private String buildRemark(LocalDate endDate, int total)
+    private void createDailyGroup(List<Stock> matched, LocalDate endDate)
     {
-        return String.format("趋势上涨选股（截止%s往前%d日自收盘最低点上涨，最低日到最新≥%d根K线，链上无涨停、单日涨幅≥%.1f%%，每%d点成节点，偏离次数≤ceil(n*%.0f%%)且偏离程度≤%.0f%%，累计命中%d只）",
-                endDate, lookbackDays, minLowDays, minDailyGain, pointsPerNode, maxDeviationRatio * 100, maxDeviationDegree * 100, total);
+        String dailyGroupName = groupName + "_" + endDate;
+
+        // 幂等：同名分组已存在则跳过，避免重复生成
+        StockGroup query = new StockGroup();
+        query.setGroupName(dailyGroupName);
+        List<StockGroup> groups = stockGroupService.selectGroupList(query);
+        if (groups != null)
+        {
+            for (StockGroup g : groups)
+            {
+                if (dailyGroupName.equals(g.getGroupName()))
+                {
+                    log.info("当天分组 [{}] 已存在，跳过", dailyGroupName);
+                    return;
+                }
+            }
+        }
+
+        StockGroup group = new StockGroup();
+        group.setGroupName(dailyGroupName);
+        group.setStockCodes(matched.stream().map(Stock::getStockCode).toArray(String[]::new));
+        group.setCreateBy("system");
+        group.setRemark(buildRemark(dailyGroupName, endDate, matched.size(), false));
+        stockGroupService.insertGroup(group);
+
+        log.info("生成当天分组 [{}]，命中 {} 只", dailyGroupName, matched.size());
+    }
+
+    /**
+     * 构造分组备注（描述筛选口径与命中数）
+     *
+     * @param title      分组标题（固定分组名或当天快照分组名）
+     * @param endDate    截止日期
+     * @param total      命中数量
+     * @param cumulative true 表示累计命中，false 表示当日命中
+     */
+    private String buildRemark(String title, LocalDate endDate, int total, boolean cumulative)
+    {
+        String hitLabel = cumulative ? "累计命中" : "当日命中";
+        return String.format("%s（截止%s往前%d日自收盘最低点上涨，最低日到最新≥%d根K线，链上无涨停、单日涨幅≥%.1f%%，每%d点成节点，偏离次数≤ceil(n*%.0f%%)且偏离程度≤%.0f%%，%s%d只）",
+                title, endDate, lookbackDays, minLowDays, minDailyGain, pointsPerNode, maxDeviationRatio * 100, maxDeviationDegree * 100, hitLabel, total);
     }
 
     /**
