@@ -1,5 +1,9 @@
 package com.ruoyi.system.service;
 
+import com.ruoyi.system.domain.stock.StockKline;
+
+import java.util.List;
+
 /**
  * 趋势上涨选股 Service
  *
@@ -11,14 +15,22 @@ package com.ruoyi.system.service;
  * 判定节点链逐步上涨（允许偶尔偏差）：
  * 整体上涨（末节点 > 首节点），偏离次数 <= ceil(节点数 * maxDeviationRatio)，
  * 偏离程度（偏离累计跌幅 / (最高点-最低点)）<= maxDeviationDegree。
- * 命中股票生成一个新分组。
+ * 命中股票累加进固定分组，并额外生成当天快照分组。
  */
 public interface IStockRisingTrendService
 {
     /**
-     * 执行趋势上涨选股，命中股票生成一个分组
+     * 执行趋势上涨选股，命中股票累加进固定分组并生成当天快照分组
      *
      * @param date 截止日期（yyyy-MM-dd），为空则使用当天
      */
     void execute(String date);
+
+    /**
+     * 判定一组日K线是否仍处于「逐步上涨」趋势
+     *
+     * @param klines 某只股票的日K线（无序亦可，内部按交易日升序排序）
+     * @return true 表示趋势向上，false 表示趋势不再向上或数据不足
+     */
+    boolean isRisingTrend(List<StockKline> klines);
 }

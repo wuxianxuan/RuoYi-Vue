@@ -7,12 +7,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
- * 适合做T选股定时任务
+ * 趋势积累池减法定时任务
  *
- * 取最近 lookbackDays 个交易日的每日行情快照（stock_daily_quote），
- * 对每只股票计算近N日的 振幅/换手率/成交额/量比 平均值，四类指标均达到阈值即命中，
- * 命中股票生成一个新分组。
- * 建议 cron: 0 50 16 ? * MON-FRI（每个交易日下午16:50，依赖行情同步 stockQuoteSyncTask 已完成）。
+ * 对「趋势上涨选股」任务生成的积累分组做减法，逐个复查分组内股票，
+ * 将趋势不再向上的股票移除（趋势判定复用趋势上涨选股的「逐步上涨」算法）。
+ * 建议 cron: 0 50 16 ? * MON-FRI（每个交易日下午16:50，依赖趋势上涨选股 stockRisingTrendTask 已完成）。
  * 通过 RuoYi 定时任务管理页面配置，调用目标字符串: stockDayTradingTask.execute()
  */
 @Component("stockDayTradingTask")
@@ -24,7 +23,7 @@ public class StockDayTradingTask
     private IStockDayTradingService stockDayTradingService;
 
     /**
-     * 执行适合做T选股
+     * 执行趋势积累池减法
      */
     public void execute()
     {

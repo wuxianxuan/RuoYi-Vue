@@ -104,7 +104,7 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     private double limitUpThreshold;
 
     /** 单日最小涨幅下限(%)：上涨切片内任一天相对前收涨幅 < 该值则过滤（用于过滤日涨幅过低的数据） */
-    @Value("${stock.rising-trend.min-daily-gain:0}")
+    @Value("${stock.rising-trend.min-daily-gain:0.5}")
     private double minDailyGain;
 
     /** 排除的板块代码前缀（逗号分隔），默认排除创业板(300/301)、科创板(688/689) */
@@ -167,7 +167,7 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
         List<Stock> matched = new ArrayList<>();
         for (Stock s : stockMap.values())
         {
-            if (matches(klineMap.get(s.getStockCode())))
+            if (isRisingTrend(klineMap.get(s.getStockCode())))
             {
                 matched.add(s);
             }
@@ -188,9 +188,10 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     }
 
     /**
-     * 判定单只股票是否满足「逐步上涨」形态
+     * 判定一组日K线是否仍处于「逐步上涨」形态
      */
-    private boolean matches(List<StockKline> klines)
+    @Override
+    public boolean isRisingTrend(List<StockKline> klines)
     {
         if (klines == null || klines.isEmpty())
         {
