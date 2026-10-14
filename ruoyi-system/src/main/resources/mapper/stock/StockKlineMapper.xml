@@ -77,18 +77,25 @@
         )
     </insert>
 
-    <insert id="insertIgnoreKline" parameterType="StockKline">
-        insert ignore into stock_kline (
+    <insert id="upsertKline" parameterType="StockKline">
+        insert into stock_kline (
             stock_code, kline_type, trade_time, open_price, close_price,
             high_price, low_price, volume, amount
         ) values (
         #{stockCode}, #{klineType}, #{tradeTime}, #{openPrice}, #{closePrice},
         #{highPrice}, #{lowPrice}, #{volume}, #{amount}
         )
+        on duplicate key update
+            open_price = values(open_price),
+            close_price = values(close_price),
+            high_price = values(high_price),
+            low_price = values(low_price),
+            volume = values(volume),
+            amount = values(amount)
     </insert>
 
-    <insert id="insertIgnoreKlineBatch">
-        insert ignore into stock_kline (
+    <insert id="upsertKlineBatch">
+        insert into stock_kline (
         stock_code, kline_type, trade_time, open_price, close_price,
         high_price, low_price, volume, amount
         ) values
@@ -97,6 +104,13 @@
             #{item.openPrice}, #{item.closePrice}, #{item.highPrice},
             #{item.lowPrice}, #{item.volume}, #{item.amount})
         </foreach>
+        on duplicate key update
+            open_price = values(open_price),
+            close_price = values(close_price),
+            high_price = values(high_price),
+            low_price = values(low_price),
+            volume = values(volume),
+            amount = values(amount)
     </insert>
 
     <delete id="deleteKlineByCodeType">

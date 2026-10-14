@@ -18,7 +18,7 @@ public class StockKlineServiceImpl implements IStockKlineService
 {
     private static final Logger log = LoggerFactory.getLogger(StockKlineServiceImpl.class);
 
-    /** 最大并发写库线程数：限制 INSERT IGNORE 对唯一索引的锁竞争，降低死锁概率 */
+    /** 最大并发写库线程数：限制 ON DUPLICATE KEY UPDATE 对唯一索引的锁竞争，降低死锁概率 */
     private static final int MAX_CONCURRENT_WRITES = 4;
 
     /** 死锁重试次数（共 MAX_RETRY + 1 次尝试） */
@@ -46,7 +46,7 @@ public class StockKlineServiceImpl implements IStockKlineService
     }
 
     /**
-     * 定时同步：从腾讯源拉取并落库，靠唯一键 INSERT IGNORE 幂等去重
+     * 定时同步：从腾讯源拉取并落库，靠唯一键 ON DUPLICATE KEY UPDATE 覆盖更新
      */
     @Override
     public void syncKline(String stockCode, String market, String klineType, String startDate, String endDate)
@@ -57,7 +57,7 @@ public class StockKlineServiceImpl implements IStockKlineService
             return;
         }
 
-        // 同步任务多线程并发写 stock_kline，INSERT IGNORE 在唯一键 uk_code_type_time 上检测重复键
+        // 同步任务多线程并发写 stock_kline，ON DUPLICATE KEY UPDATE 在唯一键 uk_code_type_time 上检测冲突
         // 会加共享锁，与并发插入的意向锁冲突形成死锁。这里通过信号量限制并发写库，并对残余死锁做重试。
         for (int attempt = 0; ; attempt++)
         {
@@ -66,7 +66,7 @@ public class StockKlineServiceImpl implements IStockKlineService
                 WRITE_SEMAPHORE.acquire();
                 try
                 {
-                    stockKlineMapper.insertIgnoreKlineBatch(fetched);
+                    stockKlineMapper.upsertKlineBatch(fetched);
                     return;
                 }
                 finally

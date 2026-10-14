@@ -11,7 +11,7 @@ public interface IStockKlineService {
     List<StockKline> getKline(String stockCode, String klineType, String startDate, String endDate);
 
     /**
-     * 同步K线：从腾讯源拉取并落库（INSERT IGNORE 幂等去重）
+     * 同步K线：从腾讯源拉取并落库（ON DUPLICATE KEY UPDATE 覆盖更新）
      */
     void syncKline(String stockCode, String market, String klineType, String startDate, String endDate);
 }

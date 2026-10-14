@@ -15,9 +15,9 @@ public interface StockKlineMapper {
 
     public int insertKline(StockKline stockKline);
 
-    public int insertIgnoreKline(StockKline stockKline);
+    public int upsertKline(StockKline stockKline);
 
-    public int insertIgnoreKlineBatch(List<StockKline> klineList);
+    public int upsertKlineBatch(List<StockKline> klineList);
 
     public int deleteKlineByCodeType(String stockCode, String klineType);
 
