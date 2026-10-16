@@ -18,8 +18,13 @@ public class StockKlineServiceImpl implements IStockKlineService
 {
     private static final Logger log = LoggerFactory.getLogger(StockKlineServiceImpl.class);
 
-    /** 最大并发写库线程数：限制 ON DUPLICATE KEY UPDATE 对唯一索引的锁竞争，降低死锁概率 */
-    private static final int MAX_CONCURRENT_WRITES = 4;
+    /**
+     * 最大并发写库线程数。
+     * ON DUPLICATE KEY UPDATE 在 REPEATABLE READ 下对二级唯一索引 uk_code_type_time 做重复检测时
+     * 会先加共享锁、再加插入意向锁，多个写线程即使写入不同 stock_code 也会因间隙锁互相等待形成死锁。
+     * 并发写只能“降低概率”而非“根除”，故串行化写库（=1）彻底消除死锁；拉取网络数据仍在信号量外并行，性能影响可忽略。
+     */
+    private static final int MAX_CONCURRENT_WRITES = 1;
 
     /** 死锁重试次数（共 MAX_RETRY + 1 次尝试） */
     private static final int MAX_RETRY = 3;
