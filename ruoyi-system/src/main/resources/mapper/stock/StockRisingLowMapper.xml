@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.StockRisingLowMapper">
+
+    <insert id="insertIgnoreBatch">
+        insert ignore into stock_rising_low (stock_code, low_date, create_time) values
+        <foreach collection="list" item="item" separator=",">
+            (#{item.stockCode}, #{item.lowDate}, sysdate())
+        </foreach>
+    </insert>
+
+    <select id="selectLatestLowWithClose" resultType="java.util.HashMap">
+        select r.stock_code as stockCode, r.low_date as lowDate, k.close_price as closePrice
+        from stock_rising_low r
+        inner join (
+            select stock_code, max(low_date) as maxLowDate
+            from stock_rising_low
+            where stock_code in
+            <foreach collection="stockCodes" item="code" open="(" separator="," close=")">
+                #{code}
+            </foreach>
+            group by stock_code
+        ) t on r.stock_code = t.stock_code and r.low_date = t.maxLowDate
+        inner join stock_kline k on k.stock_code = r.stock_code
+            and k.kline_type = 'D' and date(k.trade_time) = r.low_date
+    </select>
+
+</mapper>

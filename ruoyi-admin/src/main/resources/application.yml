@@ -215,24 +215,8 @@ stock:
     limit-up-threshold: 9.8
     # 排除的板块代码前缀（逗号分隔），默认排除创业板(300/301)、科创板(688/689)
     exclude-code-prefixes: 300,301,688,689
-  # 适合做T选股配置
+  # 趋势积累池减法 + 日推荐配置
   day-trading:
-    # 回看交易日数（近N日）
+    # 最近趋势回看日历天数（拉取近几日日K线，用于走下坡/趋势过滤判断）
     lookback-days: 7
-    # 最少有效快照天数（不足则过滤）
-    min-klines: 7
-    # 近N日最小振幅(%)下限（取窗口内振幅最小那天，最差那天也需达标）
-    min-amplitude: 5.0
-    # 近N日平均换手率(%)下限
-    min-turnover-rate: 3.0
-    # 近N日平均成交额下限（亿）
-    min-turnover-amount: 1.0
-    # 近N日平均量比下限
-    min-volume-ratio: 1.0
-    # 是否排除 ST/*ST 股票
-    exclude-st: true
-    # 扫描市场列表（逗号分隔）
-    markets: SH,SZ
-    # 排除的板块代码前缀（逗号分隔），默认排除创业板(300/301)、科创板(688/689)
-    exclude-code-prefixes: 300,301,688,689
 

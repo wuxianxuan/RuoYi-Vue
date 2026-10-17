@@ -7,10 +7,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
- * 趋势积累池减法定时任务
+ * 趋势积累池减法 + 日推荐定时任务
  *
- * 对「趋势上涨选股」任务生成的积累分组做减法，逐个复查分组内股票，
- * 将趋势不再向上的股票移除（趋势判定复用趋势上涨选股的「逐步上涨」算法）。
+ * 对「趋势上涨选股」任务生成的积累分组做减法并产出当日推荐：
+ * 走下坡的股票移出积累池，剩余股票经最近趋势过滤后生成当天日推荐分组。
  * 建议 cron: 0 50 16 ? * MON-FRI（每个交易日下午16:50，依赖趋势上涨选股 stockRisingTrendTask 已完成）。
  * 通过 RuoYi 定时任务管理页面配置，调用目标字符串: stockDayTradingTask.execute()
  */
@@ -23,18 +23,18 @@ public class StockDayTradingTask
     private IStockDayTradingService stockDayTradingService;
 
     /**
-     * 执行趋势积累池减法
+     * 执行趋势积累池减法 + 日推荐
      */
     public void execute()
     {
-        log.info("开始执行适合做T选股...");
+        log.info("开始执行趋势积累池减法 + 日推荐...");
         try
         {
             stockDayTradingService.execute();
         }
         catch (Exception e)
         {
-            log.error("适合做T选股执行失败", e);
+            log.error("趋势积累池减法 + 日推荐执行失败", e);
         }
     }
 

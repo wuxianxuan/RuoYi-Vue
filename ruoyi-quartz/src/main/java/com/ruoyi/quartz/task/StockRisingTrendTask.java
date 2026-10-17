@@ -12,7 +12,8 @@ import org.springframework.stereotype.Component;
  * 以指定日期（入参，为空则当天）为截止日，往前回看若干日历日K线，
  * 排除创业板/科创板与 ST/*ST，切片链上任一天不得为涨停，
  * 从收盘价最低的那天切片到最近一天，
- * 判定收盘价链逐步上涨（整体上涨、偏离次数与偏离程度受限），命中股票累加进固定分组。
+ * 判定收盘价链逐步上涨（整体上涨、偏离次数与偏离程度受限），命中股票累加进固定分组，
+ * 并记录每只命中股票的最低点日期（同股票同日期仅记录一条，供减法任务做走下坡判断）。
  * 建议 cron: 0 40 16 ? * MON-FRI（每个交易日下午16:40，依赖 K线同步 stockKlineSyncTask 已完成）。
  * 通过 RuoYi 定时任务管理页面配置，调用目标字符串: stockRisingTrendTask.execute(日期) 或 stockRisingTrendTask.execute()
  */

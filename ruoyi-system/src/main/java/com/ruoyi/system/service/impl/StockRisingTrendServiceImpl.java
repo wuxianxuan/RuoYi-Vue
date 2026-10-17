@@ -3,8 +3,10 @@ package com.ruoyi.system.service.impl;
 import com.ruoyi.system.domain.stock.Stock;
 import com.ruoyi.system.domain.stock.StockGroup;
 import com.ruoyi.system.domain.stock.StockKline;
+import com.ruoyi.system.domain.stock.StockRisingLow;
 import com.ruoyi.system.mapper.StockKlineMapper;
 import com.ruoyi.system.mapper.StockMapper;
+import com.ruoyi.system.mapper.StockRisingLowMapper;
 import com.ruoyi.system.service.IStockGroupService;
 import com.ruoyi.system.service.IStockRisingTrendService;
 import org.slf4j.Logger;
@@ -14,9 +16,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -40,7 +44,7 @@ import java.util.stream.Collectors;
  *      - 偏离程度（偏离累计跌幅 / (最高点-最低点)）<= maxDeviationDegree。
  * 收盘价数量不足 minKlines 的股票直接过滤。
  *
- * 命中股票累加进固定分组（去重）。
+ * 命中股票累加进固定分组（去重），并记录每只命中股票的最低点日期（同股票同日期仅记录一条）。
  *
  * @author ruoyi
  */
@@ -57,6 +61,9 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
 
     @Autowired
     private IStockGroupService stockGroupService;
+
+    @Autowired
+    private StockRisingLowMapper stockRisingLowMapper;
 
     /** 回看日历天数（a） */
     @Value("${stock.rising-trend.lookback-days:30}")
@@ -160,11 +167,21 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
 
         // 3. 逐只判定
         List<Stock> matched = new ArrayList<>();
+        List<StockRisingLow> lowRecords = new ArrayList<>();
         for (Stock s : stockMap.values())
         {
-            if (isRisingTrend(klineMap.get(s.getStockCode())))
+            TrendResult result = analyze(klineMap.get(s.getStockCode()));
+            if (result.rising)
             {
                 matched.add(s);
+                if (result.lowDate != null)
+                {
+                    StockRisingLow record = new StockRisingLow();
+                    record.setStockCode(s.getStockCode());
+                    record.setLowDate(result.lowDate);
+                    lowRecords.add(record);
+                    log.info("    命中 {} {}，最低点日期 {}", s.getStockCode(), s.getStockName(), result.lowDate);
+                }
             }
         }
         log.info("符合条件的股票 {} 只", matched.size());
@@ -174,6 +191,13 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
         {
             log.warn("无符合条件的股票，任务结束");
             return;
+        }
+
+        // 记录最低点日期（同股票同日期仅保留一条）
+        if (!lowRecords.isEmpty())
+        {
+            stockRisingLowMapper.insertIgnoreBatch(lowRecords);
+            log.info("记录最低点日期 {} 条", lowRecords.size());
         }
 
         // 累加进固定分组（去重）
@@ -187,27 +211,38 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     @Override
     public boolean isRisingTrend(List<StockKline> klines)
     {
+        return analyze(klines).rising;
+    }
+
+    /**
+     * 分析一组日K线是否处于「逐步上涨」形态，命中时返回最低点日期
+     */
+    private TrendResult analyze(List<StockKline> klines)
+    {
+        TrendResult result = new TrendResult();
         if (klines == null || klines.isEmpty())
         {
-            return false;
+            return result;
         }
 
-        // 按交易日升序排序，提取有效收盘价
+        // 按交易日升序排序，提取有效收盘价及其交易日
         List<StockKline> list = new ArrayList<>(klines);
         list.sort(Comparator.comparing(StockKline::getTradeTime));
 
         List<Double> closes = new ArrayList<>();
+        List<String> closeDates = new ArrayList<>();
         for (StockKline kl : list)
         {
             if (kl.getClosePrice() != null)
             {
                 closes.add(kl.getClosePrice().doubleValue());
+                closeDates.add(toDateString(kl.getTradeTime()));
             }
         }
         // 历史数据不足 minKlines 直接过滤
         if (closes.size() < minKlines)
         {
-            return false;
+            return result;
         }
 
         int closeCount = closes.size();
@@ -224,12 +259,12 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
         if (minIdx >= closeCount - 1)
         {
             // 最低点就是最新一天，无上升空间
-            return false;
+            return result;
         }
         // 最低点到最新点合计需至少 minLowDays 根K线（含端点），否则上涨趋势尚未确立
         if (closeCount - minIdx < minLowDays)
         {
-            return false;
+            return result;
         }
 
         // 从最低点到最新点的整个链上，任一天都不得为涨停（相对前收涨幅 >= limitUpThreshold%），涨停说明已爆发
@@ -243,7 +278,7 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
             double curClose = closes.get(i);
             if (prevClose > 0 && (curClose - prevClose) / prevClose * 100 >= limitUpThreshold)
             {
-                return false;
+                return result;
             }
         }
 
@@ -255,7 +290,7 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
             double curClose = closes.get(i);
             if (prevClose > 0 && (curClose - prevClose) / prevClose * 100 < minDailyGain)
             {
-                return false;
+                return result;
             }
         }
 
@@ -266,7 +301,7 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
         // 整体上涨约束：末个收盘价 > 首个收盘价
         if (requireOverallUp && nodes.get(n - 1) <= nodes.get(0))
         {
-            return false;
+            return result;
         }
 
         // 偏离判定：收盘价相对前一收盘价下跌算一次偏离，同时累计偏离幅度与最高/最低点
@@ -297,17 +332,40 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
         int maxDeviationCount = (int) Math.ceil(n * maxDeviationRatio);
         if (dev > maxDeviationCount)
         {
-            return false;
+            return result;
         }
 
         // 偏离程度 = 偏离累计跌幅 / (最高点 - 最低点)，不能超过 maxDeviationDegree
         double range = maxNode - minNode;
         if (range > 0 && dropSum / range > maxDeviationDegree)
         {
-            return false;
+            return result;
         }
 
-        return true;
+        result.rising = true;
+        result.lowDate = closeDates.get(minIdx);
+        return result;
+    }
+
+    /**
+     * 趋势判定结果：是否上涨 + 最低点日期
+     */
+    private static class TrendResult
+    {
+        private boolean rising;
+        private String lowDate;
+    }
+
+    /**
+     * 将 K 线交易日（Date）转为 yyyy-MM-dd 字符串
+     */
+    private String toDateString(Date date)
+    {
+        if (date == null)
+        {
+            return null;
+        }
+        return date.toInstant().atZone(ZoneId.systemDefault()).toLocalDate().toString();
     }
 
     /**
