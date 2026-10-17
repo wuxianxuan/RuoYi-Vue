@@ -62,8 +62,8 @@ public class TencentKlineDataSource
         }
         catch (Exception e)
         {
-            log.error("腾讯K线请求失败: {}", e.getMessage());
-            return new ArrayList<>();
+            log.error("腾讯K线请求失败: stockCode={}, error={}", stockCode, e.getMessage());
+            throw new RuntimeException("腾讯K线请求失败: " + stockCode, e);
         }
     }
 

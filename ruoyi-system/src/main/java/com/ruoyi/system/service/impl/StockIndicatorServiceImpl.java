@@ -74,6 +74,15 @@ public class StockIndicatorServiceImpl implements IStockIndicatorService
             lows.add(k.getLowPrice());
             volumes.add(k.getVolume() != null ? k.getVolume() : 0L);
         }
+        // 停牌/数据缺失日价格为 null，前向填充（视为价格不变），避免下游 SMA/KDJ/CCI 对 null 运算抛 NPE
+        fillForward(closes);
+        fillForward(highs);
+        fillForward(lows);
+        if (closes.get(0) == null || highs.get(0) == null || lows.get(0) == null)
+        {
+            log.warn("K线价格全为空，无法计算指标: stockCode={}", klines.get(0).getStockCode());
+            return new ArrayList<>();
+        }
 
         // ==================== 计算 SMA ====================
         BigDecimal[] sma5 = calcSMA(closes, 5);
@@ -148,6 +157,48 @@ public class StockIndicatorServiceImpl implements IStockIndicatorService
     }
 
     // ==================== 私有计算方法 ====================
+
+    /**
+     * 前向填充 null：用前一个有效值填充 null（停牌/缺失日视为价格不变），
+     * 开头的 null 用第一个有效值回填；全 null 时保持原样（调用方判断后跳过计算）。
+     */
+    private void fillForward(List<BigDecimal> values)
+    {
+        BigDecimal lastValid = null;
+        for (int i = 0; i < values.size(); i++)
+        {
+            BigDecimal v = values.get(i);
+            if (v != null)
+            {
+                lastValid = v;
+            }
+            else if (lastValid != null)
+            {
+                values.set(i, lastValid);
+            }
+        }
+        if (lastValid == null)
+        {
+            return;
+        }
+        BigDecimal firstValid = null;
+        for (BigDecimal v : values)
+        {
+            if (v != null)
+            {
+                firstValid = v;
+                break;
+            }
+        }
+        if (firstValid == null)
+        {
+            return;
+        }
+        for (int i = 0; i < values.size() && values.get(i) == null; i++)
+        {
+            values.set(i, firstValid);
+        }
+    }
 
     /**
      * 简单移动均线 SMA(N)

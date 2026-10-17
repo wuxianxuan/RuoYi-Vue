@@ -175,9 +175,19 @@ public class StockPlateController extends BaseController {
         if (idsObj == null || focusFlagObj == null) {
             return AjaxResult.error("参数不完整");
         }
-        List<?> idList = (List<?>) idsObj;
-        Long[] ids = idList.stream().map(i -> Long.valueOf(String.valueOf(i))).toArray(Long[]::new);
-        Integer focusFlag = Integer.valueOf(String.valueOf(focusFlagObj));
-        return toAjax(stockPlateService.updateFocusFlag(ids, focusFlag));
+        if (!(idsObj instanceof List)) {
+            return AjaxResult.error("ids 参数必须为数组");
+        }
+        try {
+            List<?> idList = (List<?>) idsObj;
+            Long[] ids = idList.stream().map(i -> Long.valueOf(String.valueOf(i))).toArray(Long[]::new);
+            Integer focusFlag = Integer.valueOf(String.valueOf(focusFlagObj));
+            if (focusFlag != 0 && focusFlag != 1) {
+                return AjaxResult.error("focusFlag 只能为 0 或 1");
+            }
+            return toAjax(stockPlateService.updateFocusFlag(ids, focusFlag));
+        } catch (NumberFormatException e) {
+            return AjaxResult.error("ids 或 focusFlag 参数格式错误");
+        }
     }
 }

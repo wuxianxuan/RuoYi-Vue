@@ -7,6 +7,7 @@ import com.ruoyi.system.domain.stock.Stock;
 import com.ruoyi.system.domain.stock.StockPlate;
 import com.ruoyi.system.mapper.StockMapper;
 import com.ruoyi.system.mapper.StockPlateMapper;
+import com.ruoyi.system.service.IStockPlateService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -64,6 +65,9 @@ public class StockPlateInfoSyncTask
 
     @Autowired
     private StockPlateMapper stockPlateMapper;
+
+    @Autowired
+    private IStockPlateService stockPlateService;
 
     // ==================== 可配置属性 ====================
 
@@ -373,9 +377,10 @@ public class StockPlateInfoSyncTask
     {
         if (stockCode == null || stockCode.length() < 6) return null;
         char first = stockCode.charAt(0);
-        if (first == '6' || first == '9') return "SH";
-        if (first == '0' || first == '2' || first == '3') return "SZ";
-        if (first == '8' || first == '4') return "BJ";
+        if (first == '6') return "SH";                              // 沪市 A股/科创板 600/601/603/605/688/689
+        if (first == '9') return stockCode.startsWith("920") ? "BJ" : "SH"; // 920 北交所新代码段 / 900 沪B(兜底SH)
+        if (first == '0' || first == '2' || first == '3') return "SZ"; // 深市主板/中小板/创业板
+        if (first == '8' || first == '4') return "BJ";              // 北交所老代码段 43x/83x/87x
         return null;
     }
 
@@ -395,14 +400,17 @@ public class StockPlateInfoSyncTask
             return 0;
         }
 
+        String[] codeArray = stockCodes.toArray(new String[0]);
+        int rows;
         if (fullReplace)
         {
-            stockPlateMapper.deletePlateStocksByPlateCode(plateCode);
-            log.debug("清空板块 [{}] 原有关联", plateCode);
+            // 全量替换（先删后插同一事务），避免任务中断导致关联丢失
+            rows = stockPlateService.replacePlateStocks(plateCode, codeArray);
         }
-
-        String[] codeArray = stockCodes.toArray(new String[0]);
-        int rows = stockPlateMapper.insertPlateStocks(plateCode, codeArray);
+        else
+        {
+            rows = stockPlateService.insertPlateStocks(plateCode, codeArray);
+        }
 
         log.info("板块 [{}] 关联同步完成: {} 只股票, 模式={}",
                 plateCode, stockCodes.size(), fullReplace ? "全量替换" : "增量追加");

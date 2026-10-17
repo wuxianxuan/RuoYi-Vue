@@ -316,6 +316,28 @@
         <if test="stock.stockCode != null and stock.stockCode != ''"> and s.stock_code = #{stock.stockCode}</if>
         <if test="stock.stockName != null and stock.stockName != ''"> and s.stock_name like concat('%', #{stock.stockName}, '%')</if>
         <if test="stock.market != null and stock.market != ''"> and s.market = #{stock.market}</if>
+        <if test="stock.industryIds != null and stock.industryIds.length > 0">
+            and EXISTS (
+            select 1 from stock_plate_stock sps
+            inner join stock_plate sp on sps.plate_code = sp.plate_code
+            where sps.stock_code = s.stock_code and sp.plate_type = 'INDUSTRY'
+            and sp.id in
+            <foreach item="industryId" collection="stock.industryIds" open="(" separator="," close=")">
+                #{industryId}
+            </foreach>
+            )
+        </if>
+        <if test="stock.conceptIds != null and stock.conceptIds.length > 0">
+            and EXISTS (
+            select 1 from stock_plate_stock sps2
+            inner join stock_plate sp2 on sps2.plate_code = sp2.plate_code
+            where sps2.stock_code = s.stock_code and sp2.plate_type = 'CONCEPT'
+            and sp2.id in
+            <foreach item="conceptId" collection="stock.conceptIds" open="(" separator="," close=")">
+                #{conceptId}
+            </foreach>
+            )
+        </if>
         order by s.id desc
     </select>
 

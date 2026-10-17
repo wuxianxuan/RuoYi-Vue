@@ -225,9 +225,11 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
             return result;
         }
 
-        // 按交易日升序排序，提取有效收盘价及其交易日
-        List<StockKline> list = new ArrayList<>(klines);
-        list.sort(Comparator.comparing(StockKline::getTradeTime));
+        // 按交易日升序排序（过滤 tradeTime 为空的脏数据），提取有效收盘价及其交易日
+        List<StockKline> list = klines.stream()
+                .filter(k -> k.getTradeTime() != null)
+                .sorted(Comparator.comparing(StockKline::getTradeTime))
+                .collect(Collectors.toList());
 
         List<Double> closes = new ArrayList<>();
         List<String> closeDates = new ArrayList<>();
@@ -436,11 +438,14 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
             return;
         }
 
+        // 增量插入新增股票（INSERT IGNORE 按主键去重），不覆盖已有成员，避免并发/重跑时全量覆盖丢股票
+        stockGroupService.insertGroupStocksIgnore(existing.getId(), addedCodes.toArray(new String[0]));
+
+        // 仅更新备注（不传 stockCodes，updateGroup 不会重建成员）
         StockGroup update = new StockGroup();
         update.setId(existing.getId());
         update.setUpdateBy("system");
         update.setRemark(buildRemark(groupName, endDate, mergedCodes.size()));
-        update.setStockCodes(mergedCodes.toArray(new String[0]));
         stockGroupService.updateGroup(update);
 
         log.info("分组 [{}] 本次新增 {} 只，累计 {} 只", groupName, addedCodes.size(), mergedCodes.size());

@@ -19,7 +19,7 @@ public interface StockKlineMapper {
 
     public int upsertKlineBatch(List<StockKline> klineList);
 
-    public int deleteKlineByCodeType(String stockCode, String klineType);
+    public int deleteKlineByCodeType(@Param("stockCode") String stockCode, @Param("klineType") String klineType);
 
     /**
      * 批量查询多个股票在指定日期范围内的K线数据

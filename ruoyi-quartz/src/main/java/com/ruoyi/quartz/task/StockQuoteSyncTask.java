@@ -51,6 +51,9 @@ public class StockQuoteSyncTask
 
     private static final int DB_BATCH_SIZE = 200;
 
+    /** 本次同步写入失败的条数（flush 失败被丢弃的批累计），用于汇总日志区分成功/失败 */
+    private int failedCount = 0;
+
     private final ObjectMapper objectMapper = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
@@ -80,6 +83,7 @@ public class StockQuoteSyncTask
     {
         log.info("========== 开始同步同花顺个股行情 ==========");
         log.info("数据文件: {}", dataFilePath);
+        failedCount = 0;
 
         try
         {
@@ -162,7 +166,7 @@ public class StockQuoteSyncTask
             }
 
             log.info("stock_daily_quote 快照已保存 (date={})", tradeDate);
-            log.info("========== 完成: {} 条 ==========", total);
+            log.info("========== 完成: {} 条, 写入失败 {} 条 ==========", total, failedCount);
         }
         catch (Exception e)
         {
@@ -266,7 +270,8 @@ public class StockQuoteSyncTask
         catch (Exception e)
         {
             log.error("stock_fund_flow 写入失败 ({} 条): {}", batch.size(), e.getMessage());
-            if (batch.size() > DB_BATCH_SIZE * 3) batch.clear();
+            failedCount += batch.size();
+            batch.clear();
         }
     }
 
@@ -473,7 +478,8 @@ public class StockQuoteSyncTask
         catch (Exception e)
         {
             log.error("stock 写入失败 ({} 条): {}", batch.size(), e.getMessage());
-            if (batch.size() > DB_BATCH_SIZE * 3) batch.clear();
+            failedCount += batch.size();
+            batch.clear();
         }
     }
 
@@ -489,7 +495,8 @@ public class StockQuoteSyncTask
         catch (Exception e)
         {
             log.error("stock_daily_quote 写入失败 ({} 条): {}", batch.size(), e.getMessage());
-            if (batch.size() > DB_BATCH_SIZE * 3) batch.clear();
+            failedCount += batch.size();
+            batch.clear();
         }
     }
 }

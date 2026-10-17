@@ -100,6 +100,9 @@ public class StockFundFlowRecommendServiceImpl implements IStockFundFlowRecommen
     public void execute()
     {
         log.info("========== 资金流向推荐引擎开始 ==========");
+        // 先清空历史重点关注标记，再按本次命中重新置 1，避免 focus_flag 永久累积无法收敛
+        stockPlateMapper.resetFocusFlagByType("INDUSTRY");
+        stockPlateMapper.resetFocusFlagByType("CONCEPT");
         int industryCount = recommend("INDUSTRY");
         int conceptCount = recommend("CONCEPT");
         int zdfIndustryCount = recommendTopZdf("INDUSTRY");

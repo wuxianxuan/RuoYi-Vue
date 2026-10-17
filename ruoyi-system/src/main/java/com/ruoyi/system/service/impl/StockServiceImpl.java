@@ -13,6 +13,7 @@ import com.ruoyi.system.mapper.StockKlineMapper;
 import com.ruoyi.system.mapper.StockPlateMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import com.ruoyi.system.mapper.StockMapper;
 import com.ruoyi.system.service.IStockService;
 
@@ -185,6 +186,7 @@ public class StockServiceImpl implements IStockService
     }
 
     @Override
+    @Transactional
     public int insertStockGroups(String stockCode, Long[] groupIds)
     {
         stockMapper.deleteStockGroupsByStockCode(stockCode);

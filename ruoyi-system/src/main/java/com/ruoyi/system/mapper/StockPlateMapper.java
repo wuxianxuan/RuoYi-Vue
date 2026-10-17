@@ -102,4 +102,9 @@ public interface StockPlateMapper {
      * 批量修改板块的重点关注标记
      */
     public int updateFocusFlagByIds(@Param("ids") Long[] ids, @Param("focusFlag") Integer focusFlag);
+
+    /**
+     * 将指定类型板块的重点关注标记全部清零（推荐引擎每次执行前重置，避免历史标记永久累积）
+     */
+    public int resetFocusFlagByType(@Param("plateType") String plateType);
 }

@@ -59,6 +59,11 @@ public interface IStockPlateService {
     public int insertPlateStocks(String plateCode, String[] stockCodes);
 
     /**
+     * 全量替换板块-股票关联（先删后插，同一事务），避免同步任务中断时关联丢失
+     */
+    public int replacePlateStocks(String plateCode, String[] stockCodes);
+
+    /**
      * 批量从板块移除股票
      */
     public int deletePlateStocks(String plateCode, String[] stockCodes);

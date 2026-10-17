@@ -88,6 +88,16 @@ public class StockPlateServiceImpl implements IStockPlateService {
 
     @Override
     @Transactional
+    public int replacePlateStocks(String plateCode, String[] stockCodes) {
+        stockPlateMapper.deletePlateStocksByPlateCode(plateCode);
+        if (stockCodes == null || stockCodes.length == 0) {
+            return 0;
+        }
+        return stockPlateMapper.insertPlateStocks(plateCode, stockCodes);
+    }
+
+    @Override
+    @Transactional
     public int deletePlateStocks(String plateCode, String[] stockCodes) {
         if (stockCodes == null || stockCodes.length == 0) {
             return 0;

@@ -15,6 +15,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -92,7 +93,7 @@ public class StockIndicatorCalcTask
             }
             log.info("共 {} 只股票待处理", stocks.size());
 
-            // 2. 批量获取K线数据
+            // 2. 分段批量获取K线数据（避免超大 IN 列表与峰值内存）
             List<String> stockCodes = stocks.stream()
                     .map(Stock::getStockCode)
                     .filter(c -> c != null && !c.isEmpty())
@@ -101,19 +102,33 @@ public class StockIndicatorCalcTask
             String endDate = LocalDate.now().toString();
             String startDate = LocalDate.now().minusDays(KLINES_LOOKBACK).toString();
 
-            List<StockKline> allKlines = stockKlineMapper.selectKlineByCodesAndDays(
-                    stockCodes, "D", startDate, endDate);
+            int SEG_SIZE = 500;
+            Map<String, List<StockKline>> grouped = new LinkedHashMap<>();
+            int totalKlines = 0;
+            for (int i = 0; i < stockCodes.size(); i += SEG_SIZE)
+            {
+                List<String> seg = stockCodes.subList(i, Math.min(i + SEG_SIZE, stockCodes.size()));
+                List<StockKline> segKlines = stockKlineMapper.selectKlineByCodesAndDays(seg, "D", startDate, endDate);
+                if (segKlines == null)
+                {
+                    continue;
+                }
+                totalKlines += segKlines.size();
+                for (StockKline k : segKlines)
+                {
+                    if (k.getStockCode() != null)
+                    {
+                        grouped.computeIfAbsent(k.getStockCode(), x -> new ArrayList<>()).add(k);
+                    }
+                }
+            }
 
-            if (allKlines == null || allKlines.isEmpty())
+            if (grouped.isEmpty())
             {
                 log.warn("未获取到K线数据");
                 return;
             }
-            log.info("获取到 {} 条K线数据", allKlines.size());
-
-            // 3. 按股票代码分组
-            Map<String, List<StockKline>> grouped = allKlines.stream()
-                    .collect(Collectors.groupingBy(StockKline::getStockCode));
+            log.info("获取到 {} 条K线数据", totalKlines);
 
             // 4. 逐股计算指标
             int totalSaved = 0;
@@ -129,8 +144,11 @@ public class StockIndicatorCalcTask
                     continue;
                 }
 
-                // 按交易时间升序排列
-                klines.sort(Comparator.comparing(StockKline::getTradeTime));
+                // 按交易时间升序排列（过滤 tradeTime 为空的脏数据）
+                klines = klines.stream()
+                        .filter(k -> k.getTradeTime() != null)
+                        .sorted(Comparator.comparing(StockKline::getTradeTime))
+                        .collect(Collectors.toList());
 
                 // 只取最近 KLINES_LOOKBACK 条（如果有更多）
                 List<StockKline> recent = klines.size() > KLINES_LOOKBACK

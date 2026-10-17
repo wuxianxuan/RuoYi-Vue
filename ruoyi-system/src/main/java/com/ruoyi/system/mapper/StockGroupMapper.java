@@ -20,6 +20,8 @@ public interface StockGroupMapper {
 
     public int insertGroupStocks(@Param("groupId") Long groupId, @Param("stockCodes") String[] stockCodes);
 
+    public int insertGroupStocksIgnore(@Param("groupId") Long groupId, @Param("stockCodes") String[] stockCodes);
+
     public int deleteGroupStocks(@Param("groupId") Long groupId, @Param("stockCodes") String[] stockCodes);
 
     public int deleteGroupStocksByGroupId(Long groupId);

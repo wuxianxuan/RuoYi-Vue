@@ -9,11 +9,13 @@ import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
@@ -47,15 +49,42 @@ public class StockLimitUpRecordServiceImpl implements IStockLimitUpRecordService
     @Resource
     private StockMapper stockMapper;
 
+    /** 自身代理，用于在同一事务内完成「记录入库 + 更新股票涨停日期/连板数」的多步写库（绕过自调用不生效事务代理的问题） */
+    @Lazy
+    @Resource
+    private IStockLimitUpRecordService self;
+
     @Override
     public int batchSaveStockLimitUpRecords(List<StockLimitUpRecord> records) {
         return stockAnalysisRecordMapper.batchInsertStockLimitUpRecords(records);
     }
 
     @Override
+    @Transactional
+    public void saveRecordsAndUpdateStock(List<StockLimitUpRecord> records, String date) {
+        batchSaveStockLimitUpRecords(records);
+        updateStockLastLimitUpDate(records, date);
+        updateStockMaxLimitUpBoard(records, date);
+    }
+
+    @Override
     public String syncLimitUpData(StockLimitUpRequest request) {
         String startDate = request.getStartDate();
         String endDate = request.getEndDate();
+
+        // 增量采集：从已入库的最大交易日期之后开始，避免每次全量重跑（大跨度也仅补增量）
+        String maxTradeDate = stockAnalysisRecordMapper.selectMaxTradeDate();
+        if (maxTradeDate != null && !maxTradeDate.isEmpty() && maxTradeDate.compareTo(startDate) >= 0) {
+            LocalDate next = LocalDate.parse(maxTradeDate, DateTimeFormatter.ofPattern("yyyyMMdd")).plusDays(1);
+            String nextStr = next.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+            if (nextStr.compareTo(endDate) <= 0) {
+                log.info("检测到已采集至 {}，本次增量采集 {} ~ {}", maxTradeDate, nextStr, endDate);
+                startDate = nextStr;
+            } else {
+                log.info("已采集至 {}，无新增交易日需采集", maxTradeDate);
+                return "已是最新，无需采集";
+            }
+        }
 
         List<String> allDays = TradingDayUtils.getAllDays(startDate, endDate);
         if (allDays.isEmpty()) {
@@ -168,9 +197,7 @@ public class StockLimitUpRecordServiceImpl implements IStockLimitUpRecordService
         }
 
         if (!records.isEmpty()) {
-            batchSaveStockLimitUpRecords(records);
-            updateStockLastLimitUpDate(records, date);
-            updateStockMaxLimitUpBoard(records, date);
+            self.saveRecordsAndUpdateStock(records, date);
         }
         return records.size();
     }
@@ -238,7 +265,7 @@ public class StockLimitUpRecordServiceImpl implements IStockLimitUpRecordService
             return secuCode;
         }
         String lower = secuCode.toLowerCase();
-        if (secuCode.length() > 2 && (lower.startsWith("sh") || lower.startsWith("sz"))) {
+        if (secuCode.length() > 2 && (lower.startsWith("sh") || lower.startsWith("sz") || lower.startsWith("bj"))) {
             return secuCode.substring(2);
         }
         if (secuCode.length() > 3 && secuCode.toUpperCase().endsWith(".BJ")) {

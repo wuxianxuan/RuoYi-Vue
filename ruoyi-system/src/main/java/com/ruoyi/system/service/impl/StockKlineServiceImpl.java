@@ -91,7 +91,10 @@ public class StockKlineServiceImpl implements IStockKlineService
                     throw e;
                 }
                 log.warn("K线批量入库死锁，第{}次重试: stockCode={}", attempt + 1, stockCode);
-                sleepBeforeRetry(attempt);
+                if (!sleepBeforeRetry(attempt))
+                {
+                    return;
+                }
             }
         }
     }
@@ -125,15 +128,17 @@ public class StockKlineServiceImpl implements IStockKlineService
     /**
      * 重试前退避，指数递增避免风暴
      */
-    private void sleepBeforeRetry(int attempt)
+    private boolean sleepBeforeRetry(int attempt)
     {
         try
         {
             Thread.sleep(RETRY_BASE_DELAY_MS * (attempt + 1));
+            return true;
         }
         catch (InterruptedException e)
         {
             Thread.currentThread().interrupt();
+            return false;
         }
     }
 }

@@ -166,10 +166,11 @@ public class BlockRankResponse {
         public String getMarket() {
             String code = getStockCode();
             if (code == null) return null;
-            if (code.startsWith("6") || code.startsWith("9")) return "SH";
-            if (code.startsWith("0") || code.startsWith("2") || code.startsWith("3")) return "SZ";
-            if (code.startsWith("8") || code.startsWith("4")) return "BJ";
-            return null;
+            if (code.startsWith("6")) return "SH";                              // 沪市 A股/科创板 600/601/603/605/688/689
+            if (code.startsWith("9")) return code.startsWith("920") ? "BJ" : "SH"; // 920 北交所新代码段 / 900 沪B(兜底SH)
+            if (code.startsWith("0") || code.startsWith("2") || code.startsWith("3")) return "SZ"; // 深市主板/中小板/创业板
+            if (code.startsWith("8")) return "BJ";                              // 北交所老代码段 82/83/87/88
+            return null;                                                        // 4 开头为老三板/新三板，不属于 A 股北交所
         }
     }
 

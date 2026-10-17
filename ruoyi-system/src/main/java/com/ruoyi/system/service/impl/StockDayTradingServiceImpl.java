@@ -121,7 +121,15 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
             {
                 continue;
             }
-            klines.sort(Comparator.comparing(StockKline::getTradeTime));
+            // 过滤 tradeTime 为空的脏数据后按交易日升序排序
+            klines = klines.stream()
+                    .filter(k -> k.getTradeTime() != null)
+                    .sorted(Comparator.comparing(StockKline::getTradeTime))
+                    .collect(Collectors.toList());
+            if (klines.isEmpty())
+            {
+                continue;
+            }
 
             Double lastClose = closeOf(klines.get(klines.size() - 1));
 

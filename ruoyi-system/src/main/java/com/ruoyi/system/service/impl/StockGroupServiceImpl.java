@@ -50,11 +50,15 @@ public class StockGroupServiceImpl implements IStockGroupService
     public int updateGroup(StockGroup stockGroup)
     {
         int rows = stockGroupMapper.updateGroup(stockGroup);
-        stockGroupMapper.deleteGroupStocksByGroupId(stockGroup.getId());
         String[] stockCodes = stockGroup.getStockCodes();
-        if (stockCodes != null && stockCodes.length > 0)
+        // 仅当显式传入 stockCodes 时才重建成员（null=仅改元数据，[]=清空成员，非空=重建）
+        if (stockCodes != null)
         {
-            stockGroupMapper.insertGroupStocks(stockGroup.getId(), stockCodes);
+            stockGroupMapper.deleteGroupStocksByGroupId(stockGroup.getId());
+            if (stockCodes.length > 0)
+            {
+                stockGroupMapper.insertGroupStocks(stockGroup.getId(), stockCodes);
+            }
         }
         return rows;
     }
@@ -82,6 +86,16 @@ public class StockGroupServiceImpl implements IStockGroupService
         if (stockCodes != null && stockCodes.length > 0)
         {
             return stockGroupMapper.insertGroupStocks(groupId, stockCodes);
+        }
+        return 0;
+    }
+
+    @Override
+    public int insertGroupStocksIgnore(Long groupId, String[] stockCodes)
+    {
+        if (stockCodes != null && stockCodes.length > 0)
+        {
+            return stockGroupMapper.insertGroupStocksIgnore(groupId, stockCodes);
         }
         return 0;
     }

@@ -81,6 +81,13 @@
         </foreach>
     </insert>
 
+    <insert id="insertGroupStocksIgnore">
+        insert ignore into stock_group_stock (group_id, stock_code) values
+        <foreach item="stockCode" collection="stockCodes" separator=",">
+            (#{groupId}, #{stockCode})
+        </foreach>
+    </insert>
+
     <delete id="deleteGroupStocks">
         delete from stock_group_stock where group_id = #{groupId} and stock_code in
         <foreach item="stockCode" collection="stockCodes" open="(" separator="," close=")">

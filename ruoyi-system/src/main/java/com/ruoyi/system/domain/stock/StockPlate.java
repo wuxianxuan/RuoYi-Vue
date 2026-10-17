@@ -1,6 +1,7 @@
 package com.ruoyi.system.domain.stock;
 
 import com.ruoyi.common.core.domain.BaseEntity;
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -17,9 +18,11 @@ public class StockPlate extends BaseEntity {
     private Long id;
 
     /** 板块名称 */
+    @NotBlank(message = "板块名称不能为空")
     private String plateName;
 
     /** 板块类型（INDUSTRY 行业 / CONCEPT 概念） */
+    @NotBlank(message = "板块类型不能为空")
     private String plateType;
 
     /** 同花顺板块代码 */
