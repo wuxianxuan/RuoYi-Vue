@@ -14,12 +14,12 @@ import java.util.List;
  * 判定收盘价链逐步上涨（允许偶尔偏差）：
  * 整体上涨（末个收盘价 > 首个收盘价），偏离次数 <= ceil(收盘价数量 * maxDeviationRatio)，
  * 偏离程度（偏离累计跌幅 / (最高点-最低点)）<= maxDeviationDegree。
- * 命中股票累加进固定分组，并额外生成当天快照分组。
+ * 命中股票累加进固定分组。
  */
 public interface IStockRisingTrendService
 {
     /**
-     * 执行趋势上涨选股，命中股票累加进固定分组并生成当天快照分组
+     * 执行趋势上涨选股，命中股票累加进固定分组
      *
      * @param date 截止日期（yyyy-MM-dd），为空则使用当天
      */
