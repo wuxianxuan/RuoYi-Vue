@@ -197,19 +197,17 @@ stock:
   rising-trend:
     # 历史回看日历天数（a，默认30，可配置）
     lookback-days: 30
-    # 每个节点整合的K线点数（b）
-    points-per-node: 1
-    # 最少K线数（仅用于收盘价数量下限判定：收盘价数量 < pointsPerNode * minKlines 则过滤）
+    # 最少K线数（用于收盘价数量下限判定：收盘价数量 < minKlines 则过滤）
     min-klines: 15
     # 最低点到最新点的最少K线根数（含端点，合计 < 该值则过滤）
     min-low-days: 5
-    # 是否要求整体上涨（末节点 > 首节点）
+    # 是否要求整体上涨（末个收盘价 > 首个收盘价）
     require-overall-up: true
     # 是否排除 ST/*ST 股票
     exclude-st: true
     # 扫描市场列表（逗号分隔）
     markets: SH,SZ
-    # 偏离数量上限比例：整个节点链上偏离（下跌）次数 <= ceil(节点数 * 该值)
+    # 偏离数量上限比例：整个收盘价链上偏离（下跌）次数 <= ceil(收盘价数量 * 该值)
     max-deviation-ratio: 0.2
     # 偏离程度上限比例：偏离累计跌幅 / (最高点 - 最低点) <= 该值
     max-deviation-degree: 0.2
