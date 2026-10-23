@@ -27,4 +27,9 @@ public interface StockFundFlowMapper
      * 查询某板块类型在指定交易日内的资金流向（按交易日升序）
      */
     List<StockFundFlow> selectByPlateTypeAndDates(@Param("plateType") String plateType, @Param("dates") List<Date> dates);
+
+    /**
+     * 查询某板块（按名称）的历史资金流向趋势（按交易日升序）
+     */
+    List<StockFundFlow> selectTrendByTradeName(@Param("plateType") String plateType, @Param("tradeName") String tradeName);
 }

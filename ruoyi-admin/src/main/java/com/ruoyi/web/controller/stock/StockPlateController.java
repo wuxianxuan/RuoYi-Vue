@@ -165,6 +165,14 @@ public class StockPlateController extends BaseController {
     }
 
     /**
+     * 查询板块历史趋势（板块指数/涨跌幅/资金流，按交易日升序）
+     */
+    @GetMapping("/trend")
+    public AjaxResult getTrend(String plateType, String plateName) {
+        return success(stockPlateService.selectPlateTrend(plateType, plateName));
+    }
+
+    /**
      * 批量修改重点关注标记
      */
     @Log(title = "板块管理", businessType = BusinessType.UPDATE)

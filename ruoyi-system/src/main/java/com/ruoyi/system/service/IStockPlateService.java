@@ -1,6 +1,7 @@
 package com.ruoyi.system.service;
 
 import com.ruoyi.system.domain.stock.Stock;
+import com.ruoyi.system.domain.stock.StockFundFlow;
 import com.ruoyi.system.domain.stock.StockPlate;
 
 import java.util.List;
@@ -83,4 +84,12 @@ public interface IStockPlateService {
      * @param focusFlag 重点关注标记（1 需要 / 0 不需要）
      */
     public int updateFocusFlag(Long[] ids, Integer focusFlag);
+
+    /**
+     * 查询板块的历史趋势（板块指数/涨跌幅/资金流，按交易日升序）
+     *
+     * @param plateType 板块类型（INDUSTRY 行业 / CONCEPT 概念）
+     * @param plateName 板块名称（与 stock_fund_flow.trade_name 对应）
+     */
+    public List<StockFundFlow> selectPlateTrend(String plateType, String plateName);
 }

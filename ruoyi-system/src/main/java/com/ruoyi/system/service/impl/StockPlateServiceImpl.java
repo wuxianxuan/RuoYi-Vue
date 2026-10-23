@@ -1,7 +1,9 @@
 package com.ruoyi.system.service.impl;
 
 import com.ruoyi.system.domain.stock.Stock;
+import com.ruoyi.system.domain.stock.StockFundFlow;
 import com.ruoyi.system.domain.stock.StockPlate;
+import com.ruoyi.system.mapper.StockFundFlowMapper;
 import com.ruoyi.system.mapper.StockPlateMapper;
 import com.ruoyi.system.service.IStockPlateService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +25,9 @@ public class StockPlateServiceImpl implements IStockPlateService {
 
     @Autowired
     private StockPlateMapper stockPlateMapper;
+
+    @Autowired
+    private StockFundFlowMapper stockFundFlowMapper;
 
     // ==================== 板块 CRUD ====================
 
@@ -112,6 +117,11 @@ public class StockPlateServiceImpl implements IStockPlateService {
             return 0;
         }
         return stockPlateMapper.updateFocusFlagByIds(ids, focusFlag);
+    }
+
+    @Override
+    public List<StockFundFlow> selectPlateTrend(String plateType, String plateName) {
+        return stockFundFlowMapper.selectTrendByTradeName(plateType, plateName);
     }
 
     // ==================== 股票代码解析 ====================

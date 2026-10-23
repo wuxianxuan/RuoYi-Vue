@@ -48,4 +48,12 @@
         order by trade_date asc
     </select>
 
+    <select id="selectTrendByTradeName" resultMap="StockFundFlowResult">
+        select id, plate_type, trade_date, trade_name, url, price, trade_zdf, buy, sell, je, total
+        from stock_fund_flow
+        where plate_type = #{plateType}
+        and trade_name = #{tradeName}
+        order by trade_date asc
+    </select>
+
 </mapper>
