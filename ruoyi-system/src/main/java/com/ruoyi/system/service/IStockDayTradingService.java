@@ -12,6 +12,8 @@ public interface IStockDayTradingService
 {
     /**
      * 执行趋势积累池减法，并生成当天日推荐分组
+     *
+     * @param date 截止日期（yyyy-MM-dd），为空则默认当天
      */
-    void execute();
+    void execute(String date);
 }

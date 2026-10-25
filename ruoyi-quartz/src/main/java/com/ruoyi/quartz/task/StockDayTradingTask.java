@@ -23,28 +23,28 @@ public class StockDayTradingTask
     private IStockDayTradingService stockDayTradingService;
 
     /**
-     * 执行趋势积累池减法 + 日推荐
+     * 执行趋势积累池减法 + 日推荐（无入参日期，默认当天）
      */
     public void execute()
+    {
+        execute(null);
+    }
+
+    /**
+     * 带参入口：入参为截止日期（yyyy-MM-dd），为空则默认当天
+     *
+     * @param params 截止日期（yyyy-MM-dd）
+     */
+    public void execute(String params)
     {
         log.info("开始执行趋势积累池减法 + 日推荐...");
         try
         {
-            stockDayTradingService.execute();
+            stockDayTradingService.execute(params);
         }
         catch (Exception e)
         {
             log.error("趋势积累池减法 + 日推荐执行失败", e);
         }
-    }
-
-    /**
-     * 带参入口（参数预留，当前无参也走同一逻辑）
-     *
-     * @param params 参数（预留扩展）
-     */
-    public void execute(String params)
-    {
-        execute();
     }
 }

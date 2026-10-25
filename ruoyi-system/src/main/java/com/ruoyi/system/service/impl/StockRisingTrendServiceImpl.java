@@ -36,12 +36,9 @@ import java.util.stream.Collectors;
  *   2. 排除创业板/科创板（无交易权限），排除 ST/*ST 股票；
  *   3. 找到「收盘价最低」的那天作为起点，切片 [最低日, 最新日]；
  *      最低日到最新日合计需至少 minLowDays 根K线（含端点），否则过滤；
- *   4. 切片链上任一天都不得为涨停（相对前收涨幅 >= limitUpThreshold%），涨停说明已爆发；
- *   5. 上涨切片内任一天相对前收涨幅都不得低于 minDailyGain%（过滤日涨幅过低的数据）；
- *   6. 判定收盘价链逐步上涨：
- *      - 整体上涨：末个收盘价 > 首个收盘价；
- *      - 偏离次数 <= ceil(收盘价数量 * maxDeviationRatio)；
- *      - 偏离程度（偏离累计跌幅 / (最高点-最低点)）<= maxDeviationDegree。
+ *   4. 方向判定（允许回调、允许涨停，不强制平滑）：
+ *      - 整体涨幅：从最低收盘到最新收盘的涨幅 >= minGain%（识别突破箱体的上升趋势）；
+ *      - 接近新高：最新收盘价 >= 阶段最高收盘价 × nearHigh（未大幅回落，过滤涨后跌回箱体的假突破）。
  * 收盘价数量不足 minKlines 的股票直接过滤。
  *
  * 命中股票累加进固定分组（去重），并记录每只命中股票的最低点日期（同股票同日期仅记录一条）。
@@ -73,10 +70,6 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     @Value("${stock.rising-trend.min-klines:15}")
     private int minKlines;
 
-    /** 是否要求整体上涨（末个收盘价 > 首个收盘价） */
-    @Value("${stock.rising-trend.require-overall-up:true}")
-    private boolean requireOverallUp;
-
     /** 是否排除 ST/*ST 股票 */
     @Value("${stock.rising-trend.exclude-st:true}")
     private boolean excludeSt;
@@ -93,21 +86,17 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     @Value("${stock.rising-trend.min-low-days:5}")
     private int minLowDays;
 
-    /** 偏离数量上限比例：整个收盘价链上偏离（下跌）次数 <= ceil(收盘价数量 * 该值) */
-    @Value("${stock.rising-trend.max-deviation-ratio:0.2}")
-    private double maxDeviationRatio;
+    /** 整体涨幅阈值(%)：从最低收盘到最新收盘的涨幅需 >= 该值，用于识别突破箱体后的上升趋势 */
+    @Value("${stock.rising-trend.min-gain:5.0}")
+    private double minGain;
 
-    /** 偏离程度上限比例：偏离累计跌幅 / (最高点 - 最低点) <= 该值 */
-    @Value("${stock.rising-trend.max-deviation-degree:0.2}")
-    private double maxDeviationDegree;
+    /** 最新收盘价相对阶段最高收盘价的比例下限(0~1)：要求贴近新高、未大幅回落 */
+    @Value("${stock.rising-trend.near-high:0.9}")
+    private double nearHigh;
 
-    /** 涨停判定阈值(%)：切片链上任一天相对前收涨幅 >= 该值视为涨停，直接过滤 */
-    @Value("${stock.rising-trend.limit-up-threshold:9.8}")
-    private double limitUpThreshold;
-
-    /** 单日最小涨幅下限(%)：上涨切片内任一天相对前收涨幅 < 该值则过滤（用于过滤日涨幅过低的数据） */
-    @Value("${stock.rising-trend.min-daily-gain:0.5}")
-    private double minDailyGain;
+    /** 局部低点（回调谷/平台低点）识别窗口：比前后各 N 天都低的收盘日视为局部低点，用于记录 low_date */
+    @Value("${stock.rising-trend.local-low-window:3}")
+    private int localLowWindow;
 
     /** 排除的板块代码前缀（逗号分隔），默认排除创业板(300/301)、科创板(688/689) */
     @Value("${stock.rising-trend.exclude-code-prefixes:300,301,688,689}")
@@ -120,8 +109,8 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
         LocalDate endDate = parseDate(date);
         LocalDate startDate = endDate.minusDays(lookbackDays);
         log.info("========== 趋势上涨选股开始 ==========");
-        log.info("参数：endDate={} startDate={} lookbackDays={} minKlines={} minLowDays={} requireOverallUp={} excludeSt={} markets={} excludeCodePrefixes={} maxDeviationRatio={} maxDeviationDegree={} limitUpThreshold={} minDailyGain={} groupName={}",
-                endDate, startDate, lookbackDays, minKlines, minLowDays, requireOverallUp, excludeSt, markets, excludeCodePrefixes, maxDeviationRatio, maxDeviationDegree, limitUpThreshold, minDailyGain, groupName);
+        log.info("参数：endDate={} startDate={} lookbackDays={} minKlines={} minLowDays={} excludeSt={} markets={} excludeCodePrefixes={} minGain={} nearHigh={} groupName={}",
+                endDate, startDate, lookbackDays, minKlines, minLowDays, excludeSt, markets, excludeCodePrefixes, minGain, nearHigh, groupName);
 
         // 1. 查询候选股票基础信息
         List<Stock> stocks = stockMapper.selectStocksByMarkets(parseMarkets());
@@ -206,7 +195,7 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     }
 
     /**
-     * 判定一组日K线是否仍处于「逐步上涨」形态
+     * 判定一组日K线是否仍处于「突破箱体后的上升趋势」形态
      */
     @Override
     public boolean isRisingTrend(List<StockKline> klines)
@@ -215,7 +204,7 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     }
 
     /**
-     * 分析一组日K线是否处于「逐步上涨」形态，命中时返回最低点日期
+     * 分析一组日K线是否处于「突破箱体后的上升趋势」形态，命中时返回最低点日期
      */
     private TrendResult analyze(List<StockKline> klines)
     {
@@ -269,83 +258,53 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
             return result;
         }
 
-        // 从最低点到最新点的整个链上，任一天都不得为涨停（相对前收涨幅 >= limitUpThreshold%），涨停说明已爆发
+        // 方向判定①：从最低收盘到最新收盘的整体涨幅需 >= minGain，用于识别突破箱体后的上升趋势
+        double low = closes.get(minIdx);
+        double latest = closes.get(closeCount - 1);
+        if (low <= 0 || (latest - low) / low * 100 < minGain)
+        {
+            return result;
+        }
+
+        // 方向判定②：最新收盘价需贴近阶段最高收盘价（未大幅回落），过滤涨后跌回箱体的假突破
+        double maxClose = low;
         for (int i = minIdx; i < closeCount; i++)
         {
-            if (i == 0)
+            if (closes.get(i) > maxClose)
             {
-                continue;
-            }
-            double prevClose = closes.get(i - 1);
-            double curClose = closes.get(i);
-            if (prevClose > 0 && (curClose - prevClose) / prevClose * 100 >= limitUpThreshold)
-            {
-                return result;
+                maxClose = closes.get(i);
             }
         }
-
-        // 单日最小涨幅下限：上涨切片内任一天相对前收涨幅 < minDailyGain 则过滤（过滤日涨幅过低的数据）。
-        // 从最低点次日开始计算，避免最低点当天（本身就是下跌日）被误杀。
-        for (int i = minIdx + 1; i < closeCount; i++)
-        {
-            double prevClose = closes.get(i - 1);
-            double curClose = closes.get(i);
-            if (prevClose > 0 && (curClose - prevClose) / prevClose * 100 < minDailyGain)
-            {
-                return result;
-            }
-        }
-
-        // 收盘价切片作为节点链（原按 pointsPerNode 取均值整合节点的逻辑已移除，直接使用收盘价）
-        List<Double> nodes = closes.subList(minIdx, closeCount);
-        int n = nodes.size();
-
-        // 整体上涨约束：末个收盘价 > 首个收盘价
-        if (requireOverallUp && nodes.get(n - 1) <= nodes.get(0))
+        if (maxClose <= 0 || latest < maxClose * nearHigh)
         {
             return result;
         }
 
-        // 偏离判定：收盘价相对前一收盘价下跌算一次偏离，同时累计偏离幅度与最高/最低点
-        int dev = 0;
-        double dropSum = 0;
-        double maxNode = nodes.get(0);
-        double minNode = nodes.get(0);
-        for (int i = 1; i < n; i++)
+        // 记录「最近一个局部低点（回调谷/平台低点）」作为 low_date，而非全局最低点：
+        // 上涨过程中 low_date 随平台低点逐步抬高，跌破最近平台低点即触发 DayTradingTask 的走下坡删除。
+        int localLowIdx = minIdx;
+        for (int i = closeCount - 1; i >= minIdx + 1; i--)
         {
-            double cur = nodes.get(i);
-            double pre = nodes.get(i - 1);
-            if (cur < pre)
+            boolean isLocalLow = true;
+            int from = Math.max(minIdx, i - localLowWindow);
+            int to = Math.min(closeCount - 1, i + localLowWindow);
+            for (int j = from; j <= to; j++)
             {
-                dev++;
-                dropSum += pre - cur;
+                if (j != i && closes.get(j) < closes.get(i))
+                {
+                    isLocalLow = false;
+                    break;
+                }
             }
-            if (cur > maxNode)
+            if (isLocalLow)
             {
-                maxNode = cur;
+                localLowIdx = i;
+                break;
             }
-            if (cur < minNode)
-            {
-                minNode = cur;
-            }
-        }
-
-        // 偏离次数不能大于 ceil(收盘价数量 * maxDeviationRatio)
-        int maxDeviationCount = (int) Math.ceil(n * maxDeviationRatio);
-        if (dev > maxDeviationCount)
-        {
-            return result;
-        }
-
-        // 偏离程度 = 偏离累计跌幅 / (最高点 - 最低点)，不能超过 maxDeviationDegree
-        double range = maxNode - minNode;
-        if (range > 0 && dropSum / range > maxDeviationDegree)
-        {
-            return result;
         }
 
         result.rising = true;
-        result.lowDate = closeDates.get(minIdx);
+        result.lowDate = closeDates.get(localLowIdx);
         return result;
     }
 
@@ -464,8 +423,8 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
      */
     private String buildRemark(String title, LocalDate endDate, int total)
     {
-        return String.format("%s（截止%s往前%d日自收盘最低点上涨，最低日到最新≥%d根K线，链上无涨停、单日涨幅≥%.1f%%，偏离次数≤ceil(n*%.0f%%)且偏离程度≤%.0f%%，累计命中%d只）",
-                title, endDate, lookbackDays, minLowDays, minDailyGain, maxDeviationRatio * 100, maxDeviationDegree * 100, total);
+        return String.format("%s（截止%s往前%d日自收盘最低点上涨，最低日到最新≥%d根K线，整体涨幅≥%.0f%%且贴近新高(≥%.0f%%)，累计命中%d只）",
+                title, endDate, lookbackDays, minLowDays, minGain, nearHigh * 100, total);
     }
 
     /**

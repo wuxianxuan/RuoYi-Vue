@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,10 +56,14 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
     @Value("${stock.day-trading.lookback-days:7}")
     private int dayTradingLookbackDays;
 
+    /** 日推荐流动性过滤：换手率下限(%) */
+    @Value("${stock.day-trading.min-turnover-rate:8.0}")
+    private double minTurnoverRate;
+
     @Override
-    public void execute()
+    public void execute(String date)
     {
-        LocalDate endDate = LocalDate.now();
+        LocalDate endDate = parseDate(date);
         LocalDate startDate = endDate.minusDays(dayTradingLookbackDays);
         log.info("========== 趋势积累池减法 + 日推荐开始 ==========");
         log.info("参数：targetGroupName={} dayTradingLookbackDays={} endDate={} startDate={}",
@@ -79,11 +84,15 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
             log.warn("分组 [{}] 内无股票，跳过", targetGroupName);
             return;
         }
-        List<String> codes = poolStocks.stream()
-                .map(Stock::getStockCode)
-                .filter(code -> code != null)
-                .distinct()
-                .collect(Collectors.toList());
+        Map<String, Stock> stockMap = new HashMap<>();
+        for (Stock s : poolStocks)
+        {
+            if (s.getStockCode() != null)
+            {
+                stockMap.put(s.getStockCode(), s);
+            }
+        }
+        List<String> codes = new ArrayList<>(stockMap.keySet());
         log.info("分组 [{}] 当前 {} 只，开始复查", targetGroupName, codes.size());
 
         // 3. 查询每只股票最近一个最低日及其收盘价
@@ -144,6 +153,12 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
 
             // 5.2 最近趋势过滤：最近两日连续下跌，或当前价低于前天开盘价
             if (isRecentWeak(klines))
+            {
+                continue;
+            }
+
+            // 5.3 流动性过滤：换手率/量比/成交额不足的，不进当日推荐（但保留在积累池）
+            if (isLowLiquidity(stockMap.get(code)))
             {
                 continue;
             }
@@ -268,6 +283,38 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
             }
         }
         return null;
+    }
+
+    /**
+     * 流动性过滤：换手率不足则视为低流动性，不进当日推荐（但保留在积累池）
+     */
+    private boolean isLowLiquidity(Stock stock)
+    {
+        if (stock == null)
+        {
+            return true;
+        }
+        return stock.getTurnoverRate() != null && stock.getTurnoverRate().doubleValue() < minTurnoverRate;
+    }
+
+    /**
+     * 解析截止日期：入参为空或解析失败时默认当天
+     */
+    private LocalDate parseDate(String date)
+    {
+        if (date == null || date.trim().isEmpty())
+        {
+            return LocalDate.now();
+        }
+        try
+        {
+            return LocalDate.parse(date.trim());
+        }
+        catch (Exception e)
+        {
+            log.warn("日期参数 [{}] 解析失败，使用当前日期", date);
+            return LocalDate.now();
+        }
     }
 
     private Double closeOf(StockKline kline)
