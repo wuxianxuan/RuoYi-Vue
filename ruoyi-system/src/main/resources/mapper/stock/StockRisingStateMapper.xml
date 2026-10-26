@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.StockRisingStateMapper">
+
+    <delete id="deleteAll">
+        delete from stock_rising_state
+    </delete>
+
+    <insert id="insertBatch">
+        insert into stock_rising_state
+            (stock_code, status, high_price, high_date, low_price, low_date, enter_date, create_time, update_time)
+        values
+        <foreach collection="list" item="item" separator=",">
+            (#{item.stockCode}, #{item.status}, #{item.highPrice}, #{item.highDate}, #{item.lowPrice}, #{item.lowDate}, #{item.enterDate}, sysdate(), sysdate())
+        </foreach>
+    </insert>
+
+    <select id="selectByStockCodes" resultType="com.ruoyi.system.domain.stock.StockRisingState">
+        select stock_code as stockCode,
+               status as status,
+               high_price as highPrice,
+               DATE_FORMAT(high_date, '%Y-%m-%d') as highDate,
+               low_price as lowPrice,
+               DATE_FORMAT(low_date, '%Y-%m-%d') as lowDate,
+               DATE_FORMAT(enter_date, '%Y-%m-%d') as enterDate
+        from stock_rising_state
+        where stock_code in
+        <foreach collection="stockCodes" item="code" open="(" separator="," close=")">
+            #{code}
+        </foreach>
+    </select>
+
+</mapper>

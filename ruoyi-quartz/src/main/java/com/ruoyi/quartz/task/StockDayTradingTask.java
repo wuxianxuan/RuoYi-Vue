@@ -7,10 +7,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
- * 趋势积累池减法 + 日推荐定时任务
+ * 趋势积累池日推荐定时任务
  *
- * 对「趋势上涨选股」任务生成的积累分组做减法并产出当日推荐：
- * 走下坡的股票移出积累池，剩余股票经最近趋势过滤后生成当天日推荐分组。
+ * 「趋势上涨选股」任务每日全量覆盖积累分组（含 ATR 波段删除）并把波段状态写入 stock_rising_state 表；
+ * 本任务按波段状态把积累池拆成「上升」「震荡」两个日推荐分组（换手率达标才进），
+ * 并遍历当日涨停记录过滤出首板/二板生成「涨停首二板_日期」分组。
  * 建议 cron: 0 50 16 ? * MON-FRI（每个交易日下午16:50，依赖趋势上涨选股 stockRisingTrendTask 已完成）。
  * 通过 RuoYi 定时任务管理页面配置，调用目标字符串: stockDayTradingTask.execute()
  */

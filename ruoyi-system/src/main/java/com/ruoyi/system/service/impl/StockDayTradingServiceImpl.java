@@ -2,9 +2,10 @@ package com.ruoyi.system.service.impl;
 
 import com.ruoyi.system.domain.stock.Stock;
 import com.ruoyi.system.domain.stock.StockGroup;
-import com.ruoyi.system.domain.stock.StockKline;
-import com.ruoyi.system.mapper.StockKlineMapper;
-import com.ruoyi.system.mapper.StockRisingLowMapper;
+import com.ruoyi.system.domain.stock.StockLimitUpRecord;
+import com.ruoyi.system.domain.stock.StockRisingState;
+import com.ruoyi.system.mapper.StockLimitUpRecordMapper;
+import com.ruoyi.system.mapper.StockRisingStateMapper;
 import com.ruoyi.system.service.IStockDayTradingService;
 import com.ruoyi.system.service.IStockGroupService;
 import org.slf4j.Logger;
@@ -15,22 +16,28 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.Arrays;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * 趋势积累池减法 + 日推荐实现
+ * 趋势积累池日推荐实现
  *
- * 对「趋势上涨选股」任务生成的积累分组做减法并产出当日推荐：
- *   1. 逐只比较「当天收盘价」与「入积累池后最近一个最低日期的收盘价」，若更低说明股价走下坡，移出积累池；
- *   2. 对未走下坡的股票做最近趋势过滤（任一命中即不进日推荐）：
- *      - 最近两个交易日都下跌；
- *      - 当前股价低于前天开盘价；
- *   3. 剩余股票生成当天日推荐分组（分组名 = 积累池分组名 + "_" + 日期）。
+ * 一、按波段状态拆分日推荐：「趋势上涨选股」任务每日全量覆盖积累分组（含 ATR 波段删除），
+ *     并把每只池内股票的波段状态写入 stock_rising_state 表；本任务按状态拆成两个分组：
+ *     1. 上升组：波段状态=上升（当前创新高、动量最强）；
+ *     2. 震荡组：波段状态=震荡（浅回撤 ≤1ATR，上升趋势中的小幅回调）；
+ *     3. 回调股（1~2ATR 回撤）不进日推荐；换手率 < 门槛的不进日推荐。
+ *     分组名 = 积累池分组名 + "_" + 日期 + "_" + 状态。
+ *
+ * 二、涨停首二板分组：遍历当日涨停记录，过滤出首板/二板（up_num 为空=首板，
+ *     「N天2板」=二板），生成一个「涨停首二板_日期」分组。
  *
  * @author ruoyi
  */
@@ -39,41 +46,65 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
 {
     private static final Logger log = LoggerFactory.getLogger(StockDayTradingServiceImpl.class);
 
-    @Autowired
-    private StockKlineMapper stockKlineMapper;
+    /** 匹配 up_num 形如「N天M板」末尾的板数 */
+    private static final Pattern BOARD_PATTERN = Pattern.compile("(\\d+)板$");
 
     @Autowired
     private IStockGroupService stockGroupService;
 
     @Autowired
-    private StockRisingLowMapper stockRisingLowMapper;
+    private StockRisingStateMapper stockRisingStateMapper;
+
+    @Autowired
+    private StockLimitUpRecordMapper stockLimitUpRecordMapper;
 
     /** 目标趋势积累分组名（与趋势上涨选股任务保持一致） */
     @Value("${stock.rising-trend.group-name:趋势上涨选股}")
     private String targetGroupName;
 
-    /** 最近趋势回看日历天数（用于拉取近几日的日K线） */
-    @Value("${stock.day-trading.lookback-days:7}")
-    private int dayTradingLookbackDays;
-
     /** 日推荐流动性过滤：换手率下限(%) */
-    @Value("${stock.day-trading.min-turnover-rate:8.0}")
+    @Value("${stock.day-trading.min-turnover-rate:3.0}")
     private double minTurnoverRate;
+
+    /** 涨停首二板分组名（固定名，不含日期） */
+    @Value("${stock.day-trading.limit-up-group-name:涨停首二板}")
+    private String limitUpGroupName;
+
+    /** 是否排除 ST/*ST 股票（与趋势上涨选股保持一致） */
+    @Value("${stock.rising-trend.exclude-st:true}")
+    private boolean excludeSt;
+
+    /** 排除的板块代码前缀（逗号分隔），默认排除创业板(300/301)、科创板(688/689) */
+    @Value("${stock.rising-trend.exclude-code-prefixes:300,301,688,689}")
+    private String excludeCodePrefixes;
 
     @Override
     public void execute(String date)
     {
         LocalDate endDate = parseDate(date);
-        LocalDate startDate = endDate.minusDays(dayTradingLookbackDays);
-        log.info("========== 趋势积累池减法 + 日推荐开始 ==========");
-        log.info("参数：targetGroupName={} dayTradingLookbackDays={} endDate={} startDate={}",
-                targetGroupName, dayTradingLookbackDays, endDate, startDate);
+        log.info("========== 趋势积累池日推荐开始 ==========");
+        log.info("参数：targetGroupName={} endDate={} minTurnoverRate={} limitUpGroupName={}",
+                targetGroupName, endDate, minTurnoverRate, limitUpGroupName);
 
+        // 一、按波段状态拆分「上升」「震荡」两个日推荐分组
+        generateBandGroups(endDate);
+
+        // 二、遍历当日涨停，过滤首板/二板生成一个分组
+        generateLimitUpGroup(endDate);
+
+        log.info("========== 趋势积累池日推荐完成 ==========");
+    }
+
+    /**
+     * 按波段状态拆分「上升」「震荡」两个日推荐分组
+     */
+    private void generateBandGroups(LocalDate endDate)
+    {
         // 1. 查找趋势积累分组
         StockGroup group = findGroupByName(targetGroupName);
         if (group == null)
         {
-            log.warn("未找到目标分组 [{}]，跳过", targetGroupName);
+            log.warn("未找到目标分组 [{}]，跳过波段状态日推荐", targetGroupName);
             return;
         }
 
@@ -81,7 +112,7 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
         List<Stock> poolStocks = stockGroupService.selectStocksByGroupId(group.getId());
         if (poolStocks == null || poolStocks.isEmpty())
         {
-            log.warn("分组 [{}] 内无股票，跳过", targetGroupName);
+            log.warn("分组 [{}] 内无股票，跳过波段状态日推荐", targetGroupName);
             return;
         }
         Map<String, Stock> stockMap = new HashMap<>();
@@ -93,168 +124,214 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
             }
         }
         List<String> codes = new ArrayList<>(stockMap.keySet());
-        log.info("分组 [{}] 当前 {} 只，开始复查", targetGroupName, codes.size());
+        log.info("分组 [{}] 当前 {} 只，开始按波段状态拆分日推荐", targetGroupName, codes.size());
 
-        // 3. 查询每只股票最近一个最低日及其收盘价
-        Map<String, Double> lowCloseMap = new LinkedHashMap<>();
-        List<Map<String, Object>> lowRecords = stockRisingLowMapper.selectLatestLowWithClose(codes);
-        if (lowRecords != null)
+        // 3. 查询每只股票的波段状态
+        Map<String, String> statusMap = new HashMap<>();
+        List<StockRisingState> states = stockRisingStateMapper.selectByStockCodes(codes);
+        if (states != null)
         {
-            for (Map<String, Object> record : lowRecords)
+            for (StockRisingState st : states)
             {
-                Object code = record.get("stockCode");
-                Object close = record.get("closePrice");
-                if (code != null && close != null)
+                if (st.getStockCode() != null && st.getStatus() != null)
                 {
-                    lowCloseMap.put(code.toString(), ((Number) close).doubleValue());
+                    statusMap.put(st.getStockCode(), st.getStatus());
                 }
             }
         }
-        log.info("有最低点记录的股票 {} 只", lowCloseMap.size());
+        log.info("有波段状态的股票 {} 只", statusMap.size());
 
-        // 4. 批量拉取最近日K线
-        List<StockKline> allKlines = stockKlineMapper.selectKlineByCodesAndDays(codes, "D", startDate.toString(), endDate.toString());
-        Map<String, List<StockKline>> klineMap = (allKlines == null)
-                ? new LinkedHashMap<>()
-                : allKlines.stream()
-                        .filter(k -> k.getStockCode() != null)
-                        .collect(Collectors.groupingBy(StockKline::getStockCode));
-
-        // 5. 逐只判定：走下坡移除 + 趋势过滤
-        List<String> removeCodes = new ArrayList<>();
-        List<String> passCodes = new ArrayList<>();
+        // 4. 逐只判定：按状态归组 + 换手率过滤
+        List<String> upCodes = new ArrayList<>();
+        List<String> shakeCodes = new ArrayList<>();
         for (String code : codes)
         {
-            List<StockKline> klines = klineMap.get(code);
-            if (klines == null || klines.isEmpty())
+            String status = statusMap.get(code);
+            if (status == null)
             {
                 continue;
             }
-            // 过滤 tradeTime 为空的脏数据后按交易日升序排序
-            klines = klines.stream()
-                    .filter(k -> k.getTradeTime() != null)
-                    .sorted(Comparator.comparing(StockKline::getTradeTime))
-                    .collect(Collectors.toList());
-            if (klines.isEmpty())
+            // 只推「上升」「震荡」，回调股不进日推荐
+            if (!"上升".equals(status) && !"震荡".equals(status))
             {
                 continue;
             }
-
-            Double lastClose = closeOf(klines.get(klines.size() - 1));
-
-            // 5.1 走下坡：当天收盘价低于最近一个最低日收盘价 → 移出积累池
-            Double lowClose = lowCloseMap.get(code);
-            if (lastClose != null && lowClose != null && lastClose < lowClose)
-            {
-                removeCodes.add(code);
-                log.info("    走下坡移除 {}：当天收盘 {} 低于最低日收盘 {}", code, lastClose, lowClose);
-                continue;
-            }
-
-            // 5.2 最近趋势过滤：最近两日连续下跌，或当前价低于前天开盘价
-            if (isRecentWeak(klines))
-            {
-                continue;
-            }
-
-            // 5.3 流动性过滤：换手率/量比/成交额不足的，不进当日推荐（但保留在积累池）
+            // 流动性过滤：换手率不足的不进日推荐（但保留在积累池）
             if (isLowLiquidity(stockMap.get(code)))
             {
                 continue;
             }
-
-            passCodes.add(code);
+            if ("上升".equals(status))
+            {
+                upCodes.add(code);
+            }
+            else
+            {
+                shakeCodes.add(code);
+            }
         }
+        log.info("筛选结果：上升 {} 只，震荡 {} 只", upCodes.size(), shakeCodes.size());
 
-        // 6. 移除走下坡股票
-        if (!removeCodes.isEmpty())
-        {
-            stockGroupService.deleteGroupStocks(group.getId(), removeCodes.toArray(new String[0]));
-            log.info("从分组 [{}] 移除走下坡 {} 只，剩余 {} 只",
-                    targetGroupName, removeCodes.size(), codes.size() - removeCodes.size());
-        }
-        else
-        {
-            log.info("分组 [{}] 无走下坡股票", targetGroupName);
-        }
-
-        // 7. 生成日推荐分组
-        if (passCodes.isEmpty())
-        {
-            log.warn("无通过趋势过滤的股票，不生成日推荐分组");
-            return;
-        }
-
-        createDailyGroup(passCodes, endDate);
-        log.info("========== 趋势积累池减法 + 日推荐完成 ==========");
+        // 5. 生成两个日推荐分组
+        createDailyGroup(upCodes, endDate, "上升");
+        createDailyGroup(shakeCodes, endDate, "震荡");
     }
 
     /**
-     * 最近趋势过滤：最近两个交易日都下跌，或当前股价低于前天开盘价，任一命中即过滤
+     * 遍历当日涨停记录，过滤首板/二板，生成一个分组
      */
-    private boolean isRecentWeak(List<StockKline> klines)
+    private void generateLimitUpGroup(LocalDate endDate)
     {
-        int n = klines.size();
-        if (n < 3)
+        List<StockLimitUpRecord> records = stockLimitUpRecordMapper.selectByTradeDate(endDate.toString());
+        if (records == null || records.isEmpty())
         {
-            // 数据不足，无法判断趋势，保守过滤
-            return true;
+            log.warn("当日 [{}] 无涨停记录，跳过涨停首二板分组", endDate);
+            return;
         }
 
-        StockKline last = klines.get(n - 1);
-        StockKline prev = klines.get(n - 2);
-        StockKline prev2 = klines.get(n - 3);
-
-        Double lastClose = closeOf(last);
-        Double prevClose = closeOf(prev);
-        Double prev2Close = closeOf(prev2);
-        Double prev2Open = openOf(prev2);
-
-        // ① 最近两个交易日都下跌
-        if (lastClose != null && prevClose != null && prev2Close != null
-                && lastClose < prevClose && prevClose < prev2Close)
+        Set<String> codes = new LinkedHashSet<>();
+        int first = 0, second = 0;
+        List<String> excludePrefixes = parseExcludePrefixes();
+        for (StockLimitUpRecord r : records)
         {
-            return true;
+            if (r.getSecuCode() == null || r.getSecuCode().isEmpty())
+            {
+                continue;
+            }
+            // 排除 ST/*ST
+            if (excludeSt && r.getSecuName() != null && r.getSecuName().toUpperCase().contains("ST"))
+            {
+                continue;
+            }
+            // 排除创业板/科创板
+            if (startsWithAny(r.getSecuCode(), excludePrefixes))
+            {
+                continue;
+            }
+            int board = boardOf(r.getUpNum());
+            if (board == 1)
+            {
+                first++;
+                codes.add(r.getSecuCode());
+            }
+            else if (board == 2)
+            {
+                second++;
+                codes.add(r.getSecuCode());
+            }
+        }
+        log.info("当日涨停 {} 条，首板 {} 只，二板 {} 只，去重后共 {} 只",
+                records.size(), first, second, codes.size());
+
+        if (codes.isEmpty())
+        {
+            log.warn("无首板/二板股票，跳过涨停首二板分组");
+            return;
         }
 
-        // ② 当前股价低于前天开盘价
-        if (lastClose != null && prev2Open != null && lastClose < prev2Open)
+        String dailyGroupName = limitUpGroupName + "_" + endDate;
+        // 幂等：同名分组已存在则跳过
+        if (groupExists(dailyGroupName))
         {
-            return true;
+            log.info("分组 [{}] 已存在，跳过", dailyGroupName);
+            return;
         }
 
+        StockGroup group = new StockGroup();
+        group.setGroupName(dailyGroupName);
+        group.setStockCodes(codes.toArray(new String[0]));
+        group.setCreateBy("system");
+        group.setRemark(String.format("%s（截止%s，当日涨停首板/二板股票，首板%d只/二板%d只，去重后%d只）",
+                dailyGroupName, endDate, first, second, codes.size()));
+        stockGroupService.insertGroup(group);
+
+        log.info("生成分组 [{}]，命中 {} 只", dailyGroupName, codes.size());
+        for (String code : codes)
+        {
+            log.info("    {}", code);
+        }
+    }
+
+    /**
+     * 解析 up_num 得到连板数：空=首板(1)；「N天M板」取末尾 M
+     */
+    private int boardOf(String upNum)
+    {
+        if (upNum == null || upNum.trim().isEmpty())
+        {
+            return 1;
+        }
+        Matcher m = BOARD_PATTERN.matcher(upNum.trim());
+        if (m.find())
+        {
+            try
+            {
+                return Integer.parseInt(m.group(1));
+            }
+            catch (NumberFormatException e)
+            {
+                return 0;
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * 解析排除板块代码前缀配置
+     */
+    private List<String> parseExcludePrefixes()
+    {
+        if (excludeCodePrefixes == null || excludeCodePrefixes.trim().isEmpty())
+        {
+            return Arrays.asList("300", "301", "688", "689");
+        }
+        return Arrays.stream(excludeCodePrefixes.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 判断股票代码是否命中任一排除前缀
+     */
+    private boolean startsWithAny(String code, List<String> prefixes)
+    {
+        for (String prefix : prefixes)
+        {
+            if (code.startsWith(prefix))
+            {
+                return true;
+            }
+        }
         return false;
     }
 
     /**
-     * 生成当天日推荐分组（分组名含日期，幂等：同名已存在则跳过）
+     * 生成当天日推荐分组（分组名含日期与状态，幂等：同名已存在则跳过）
      */
-    private void createDailyGroup(List<String> passCodes, LocalDate endDate)
+    private void createDailyGroup(List<String> passCodes, LocalDate endDate, String status)
     {
-        String dailyGroupName = targetGroupName + "_" + endDate;
+        if (passCodes == null || passCodes.isEmpty())
+        {
+            log.warn("无「{}」状态股票，跳过生成该日推荐分组", status);
+            return;
+        }
+
+        String dailyGroupName = targetGroupName + "_" + endDate + "_" + status;
 
         // 幂等：同名分组已存在则跳过
-        StockGroup query = new StockGroup();
-        query.setGroupName(dailyGroupName);
-        List<StockGroup> groups = stockGroupService.selectGroupList(query);
-        if (groups != null)
+        if (groupExists(dailyGroupName))
         {
-            for (StockGroup g : groups)
-            {
-                if (dailyGroupName.equals(g.getGroupName()))
-                {
-                    log.info("日推荐分组 [{}] 已存在，跳过", dailyGroupName);
-                    return;
-                }
-            }
+            log.info("日推荐分组 [{}] 已存在，跳过", dailyGroupName);
+            return;
         }
 
         StockGroup group = new StockGroup();
         group.setGroupName(dailyGroupName);
         group.setStockCodes(passCodes.toArray(new String[0]));
         group.setCreateBy("system");
-        group.setRemark(String.format("%s（截止%s自积累池[%s]筛选，未走下坡且最近趋势未走弱，当日命中%d只）",
-                dailyGroupName, endDate, targetGroupName, passCodes.size()));
+        group.setRemark(String.format("%s（截止%s自积累池[%s]筛选，波段状态=%s且换手率≥%.1f%%，命中%d只）",
+                dailyGroupName, endDate, targetGroupName, status, minTurnoverRate, passCodes.size()));
         stockGroupService.insertGroup(group);
 
         log.info("生成日推荐分组 [{}]，命中 {} 只", dailyGroupName, passCodes.size());
@@ -283,6 +360,14 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
             }
         }
         return null;
+    }
+
+    /**
+     * 同名分组是否已存在
+     */
+    private boolean groupExists(String name)
+    {
+        return findGroupByName(name) != null;
     }
 
     /**
@@ -315,15 +400,5 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
             log.warn("日期参数 [{}] 解析失败，使用当前日期", date);
             return LocalDate.now();
         }
-    }
-
-    private Double closeOf(StockKline kline)
-    {
-        return kline.getClosePrice() == null ? null : kline.getClosePrice().doubleValue();
-    }
-
-    private Double openOf(StockKline kline)
-    {
-        return kline.getOpenPrice() == null ? null : kline.getOpenPrice().doubleValue();
     }
 }

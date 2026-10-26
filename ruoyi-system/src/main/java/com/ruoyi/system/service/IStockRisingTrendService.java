@@ -5,31 +5,27 @@ import com.ruoyi.system.domain.stock.StockKline;
 import java.util.List;
 
 /**
- * 趋势上涨选股 Service
+ * 趋势上涨选股 Service（波段状态机算法）
  *
- * 算法：以指定日期（为空则当天）为截止日，往前回看 lookbackDays 个日历日的日K线，
- * 排除创业板/科创板（无交易权限）与 ST/*ST，
- * 从「收盘价最低」的那天切片到最近一天（最低日到最新日合计需至少 minLowDays 根K线，含端点），
- * 切片链上任一天都不得为涨停（相对前收涨幅 >= limitUpThreshold%），
- * 判定收盘价链逐步上涨（允许偶尔偏差）：
- * 整体上涨（末个收盘价 > 首个收盘价），偏离次数 <= ceil(收盘价数量 * maxDeviationRatio)，
- * 偏离程度（偏离累计跌幅 / (最高点-最低点)）<= maxDeviationDegree。
- * 命中股票累加进固定分组。
+ * 对每只股票按日K线走波段状态机（进池 → 上升/震荡/回调 → 删除）：
+ * 进池需近 entryWindow 日无涨停、区间涨幅达标、创窗口新高、收盘 > MA(maPeriod)；
+ * 入池后按 ATR 归一化回撤判定震荡/回调/删除。
+ * 每日全量重算，命中结果全量覆盖固定分组，并写入 stock_rising_state 表。
  */
 public interface IStockRisingTrendService
 {
     /**
-     * 执行趋势上涨选股，命中股票累加进固定分组
+     * 执行趋势上涨选股，命中结果全量覆盖固定分组
      *
      * @param date 截止日期（yyyy-MM-dd），为空则使用当天
      */
     void execute(String date);
 
     /**
-     * 判定一组日K线是否仍处于「逐步上涨」趋势
+     * 判定一组日K线在末根K线时是否处于上升趋势（在池内）
      *
      * @param klines 某只股票的日K线（无序亦可，内部按交易日升序排序）
-     * @return true 表示趋势向上，false 表示趋势不再向上或数据不足
+     * @return true 表示趋势向上且在池内，false 表示不在池内或数据不足
      */
     boolean isRisingTrend(List<StockKline> klines);
 }

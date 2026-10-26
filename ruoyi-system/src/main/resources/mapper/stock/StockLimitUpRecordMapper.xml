@@ -61,4 +61,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select date_format(max(trade_date), '%Y%m%d') from stock_limit_up_record
     </select>
 
+    <select id="selectByTradeDate" resultMap="StockLimitUpRecordResult">
+        select * from stock_limit_up_record where trade_date = #{tradeDate}
+    </select>
+
 </mapper>
