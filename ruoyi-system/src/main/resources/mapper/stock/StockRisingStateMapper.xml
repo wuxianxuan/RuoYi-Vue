@@ -32,4 +32,15 @@
         </foreach>
     </select>
 
+    <select id="selectAll" resultType="com.ruoyi.system.domain.stock.StockRisingState">
+        select stock_code as stockCode,
+               status as status,
+               high_price as highPrice,
+               DATE_FORMAT(high_date, '%Y-%m-%d') as highDate,
+               low_price as lowPrice,
+               DATE_FORMAT(low_date, '%Y-%m-%d') as lowDate,
+               DATE_FORMAT(enter_date, '%Y-%m-%d') as enterDate
+        from stock_rising_state
+    </select>
+
 </mapper>

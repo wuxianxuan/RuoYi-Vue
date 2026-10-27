@@ -34,6 +34,10 @@ public class TencentKlineDataSource
     @Value("${stock.kline.tencent.base-url:https://proxy.finance.qq.com}")
     private String baseUrl;
 
+    /** 分时（分钟K线）接口域名，与日K线接口不同 */
+    @Value("${stock.kline.tencent.minute-base-url:https://ifzq.gtimg.cn}")
+    private String minuteBaseUrl;
+
     public List<StockKline> fetchKline(String stockCode, String market, String klineType,
                                        String startDate, String endDate)
     {
@@ -241,5 +245,129 @@ public class TencentKlineDataSource
                 }
                 return "day";
         }
+    }
+
+    /**
+     * 拉取分时（分钟）K线。腾讯分时接口与日K接口不同：
+     * 使用 https://ifzq.gtimg.cn/appstock/app/kline/mkline?param=sz002093,m5,,320
+     * 响应 data.{fullCode}.{type} 为数组，每根为 [时间(yyyyMMddHHmm), 开盘, 收盘, 最高, 最低, 成交量(手), {}, 成交额]。
+     *
+     * @param stockCode 股票代码
+     * @param market    市场标识（"1"/"SH"=沪，"0"/"SZ"=深）
+     * @param minuteType 分钟类型：m1/m5/m15/m30/m60
+     * @param date      交易日期（yyyy-MM-dd），只保留该日期的分时bar；为空则返回全部
+     * @return 分时K线列表（按时间升序）
+     */
+    public List<StockKline> fetchMinuteKline(String stockCode, String market, String minuteType, String date)
+    {
+        String prefix;
+        if ("1".equals(market) || "SH".equalsIgnoreCase(market)) {
+            prefix = "sh";
+        } else {
+            prefix = "sz";
+        }
+        String fullCode = prefix + stockCode;
+        String type = convertMinuteType(minuteType);
+        String param = fullCode + "," + type + ",,320";
+        String url = minuteBaseUrl + "/appstock/app/kline/mkline?param=" + param;
+        log.info("腾讯分时K线请求: {}", url);
+
+        try
+        {
+            ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
+            return parseMinuteResponse(response.getBody(), fullCode, stockCode, minuteType, date);
+        }
+        catch (Exception e)
+        {
+            log.error("腾讯分时K线请求失败: stockCode={}, error={}", stockCode, e.getMessage());
+            throw new RuntimeException("腾讯分时K线请求失败: " + stockCode, e);
+        }
+    }
+
+    /**
+     * 解析腾讯分时K线响应
+     */
+    private List<StockKline> parseMinuteResponse(String body, String fullCode, String stockCode,
+                                                 String minuteType, String date)
+    {
+        List<StockKline> result = new ArrayList<>();
+        if (body == null || body.isEmpty())
+        {
+            return result;
+        }
+        try
+        {
+            JsonNode root = objectMapper.readTree(body);
+            if (root.has("code") && root.get("code").asInt() != 0)
+            {
+                log.warn("腾讯分时API返回错误: code={}", root.get("code").asInt());
+                return result;
+            }
+            JsonNode dataNode = root.path("data").path(fullCode).path(convertMinuteType(minuteType));
+            if (!dataNode.isArray())
+            {
+                return result;
+            }
+
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmm");
+            String datePrefix = (date == null || date.isEmpty()) ? null : date.replace("-", "");
+            for (JsonNode node : dataNode)
+            {
+                if (!node.isArray() || node.size() < 6)
+                {
+                    continue;
+                }
+                String time = node.get(0).asText();
+                if (datePrefix != null && !time.startsWith(datePrefix))
+                {
+                    continue;
+                }
+                try
+                {
+                    StockKline kline = new StockKline();
+                    kline.setStockCode(stockCode);
+                    kline.setKlineType(minuteType);
+                    kline.setTradeTime(sdf.parse(time));
+                    kline.setOpenPrice(new BigDecimal(node.get(1).asText()));
+                    kline.setClosePrice(new BigDecimal(node.get(2).asText()));
+                    kline.setHighPrice(new BigDecimal(node.get(3).asText()));
+                    kline.setLowPrice(new BigDecimal(node.get(4).asText()));
+                    if (node.size() > 5 && node.get(5).asText() != null && !node.get(5).asText().isEmpty())
+                    {
+                        kline.setVolume(new BigDecimal(node.get(5).asText()).multiply(BigDecimal.valueOf(100)).longValue());
+                    }
+                    result.add(kline);
+                }
+                catch (Exception e)
+                {
+                    log.debug("解析分时K线失败: time={}, error={}", time, e.getMessage());
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            log.error("解析腾讯分时K线数据失败", e);
+        }
+        return result;
+    }
+
+    /**
+     * 转换分钟类型为腾讯分时接口格式："5" -> "m5"，"m5" -> "m5"
+     */
+    private String convertMinuteType(String minuteType)
+    {
+        if (minuteType == null || minuteType.isEmpty())
+        {
+            return "m5";
+        }
+        if (minuteType.startsWith("m"))
+        {
+            return minuteType;
+        }
+        if (minuteType.matches("\\d+"))
+        {
+            return "m" + minuteType;
+        }
+        return "m5";
     }
 }

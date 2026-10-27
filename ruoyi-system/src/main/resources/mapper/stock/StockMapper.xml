@@ -357,6 +357,14 @@
         </foreach>
     </select>
 
+    <select id="selectNamesByCodes" resultType="java.util.HashMap">
+        select stock_code as stockCode, stock_name as stockName
+        from stock where stock_code in
+        <foreach collection="codes" item="code" open="(" separator="," close=")">
+            #{code}
+        </foreach>
+    </select>
+
     <!-- 批量更新最新涨停日期（涨停数据采集后写入，仅向前不回退） -->
     <update id="updateLastLimitUpDate">
         update stock

@@ -151,4 +151,11 @@
         ) t on sk.stock_code = t.stock_code and sk.trade_time = t.lastTradeTime and sk.kline_type = 'D'
     </select>
 
+    <select id="selectMaxTradeDateBefore" resultType="java.lang.String">
+        select date_format(max(date(trade_time)), '%Y-%m-%d')
+        from stock_kline
+        where kline_type = 'D'
+        and date(trade_time) &lt; #{endDate}
+    </select>
+
 </mapper>

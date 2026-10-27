@@ -23,4 +23,9 @@ public interface StockRisingStateMapper {
      * 按股票代码批量查询波段状态（供日推荐按状态拆分分组）
      */
     public List<StockRisingState> selectByStockCodes(@Param("stockCodes") List<String> stockCodes);
+
+    /**
+     * 查询全部波段状态（供尾盘推荐收集上升/震荡候选）
+     */
+    public List<StockRisingState> selectAll();
 }

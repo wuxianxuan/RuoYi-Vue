@@ -93,6 +93,11 @@ public interface StockMapper
     public List<String> selectStockCodesByCodes(@Param("codes") List<String> codes);
 
     /**
+     * 批量查询股票名称，返回 stockCode / stockName
+     */
+    public List<java.util.Map<String, Object>> selectNamesByCodes(@Param("codes") List<String> codes);
+
+    /**
      * 批量更新股票的最新涨停日期（由涨停数据采集任务写入，仅向前不回退）
      *
      * @param stockCodes 当日涨停股票代码列表

@@ -34,4 +34,9 @@ public interface StockKlineMapper {
      */
     public List<java.util.Map<String, Object>> selectYearStartCloseByStockCodes(@Param("stockCodes") List<String> stockCodes,
                                                                                 @Param("yearStartDate") String yearStartDate);
+
+    /**
+     * 查询 endDate 之前最大的日K交易日（yyyy-MM-dd），无则返回 null
+     */
+    public String selectMaxTradeDateBefore(@Param("endDate") String endDate);
 }

@@ -91,6 +91,20 @@ spring:
           max-active: 8
           # #连接池最大阻塞等待时间（使用负值表示没有限制）
           max-wait: -1ms
+  # 邮件配置（尾盘推荐推送用，请填入你自己的 SMTP 账号和授权码）
+  mail:
+    host: smtp.qq.com
+    port: 465
+    username: 494417427@qq.com
+    password: suxtwgckkiuxcaei
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+          timeout: 10000
 
 # token配置
 token:
@@ -223,4 +237,34 @@ stock:
     min-turnover-rate: 3.0
     # 涨停首二板分组名（固定名，不含日期）
     limit-up-group-name: 涨停首二板
+  # 尾盘推荐配置（每个交易日 14:45 运行）
+  tail-recommend:
+    # 分组名（固定名，不含日期）
+    group-name: 尾盘推荐
+    # 分时K线类型
+    minute-type: m5
+    # 未涨停阈值(%)：当日涨幅 >= 该值视为涨停，尾盘买不进
+    max-gain: 9.5
+    # 当日涨幅下限(%)
+    min-gain: 0.5
+    # 收盘位置下限(0~1)：收盘价相对当日[最低,最高]区间的比例
+    min-close-pos: 0.7
+    # 尾盘30分钟涨跌下限(%)：负值表示允许小幅回落，过滤真正的尾盘跳水
+    min-tail-change: -0.5
+    # 量比下限（放量确认）
+    min-volume-ratio: 1.2
+    # 并行抓取分时K线的线程数
+    thread-pool-size: 16
+    # 尾盘30分钟对应的5分钟bar数量
+    tail-bars: 6
+  # 邮件推送配置（把推荐结果推到手机邮箱）
+  notify:
+    # 是否启用邮件推送
+    enabled: true
+    # 收件邮箱（多个用逗号分隔）
+    to: 494417427@qq.com
+    # 发件人（留空默认取 spring.mail.username）
+    from:
+    # 邮件主题前缀
+    subject: 尾盘推荐
 
