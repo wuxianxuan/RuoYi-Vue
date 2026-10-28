@@ -260,6 +260,27 @@ public class TencentKlineDataSource
      */
     public List<StockKline> fetchMinuteKline(String stockCode, String market, String minuteType, String date)
     {
+        return fetchMinuteSnapshot(stockCode, market, minuteType, date).getBars();
+    }
+
+    /**
+     * 拉取分时K线 + 同一次响应里的实时行情快照（换手率 / 量比）。
+     *
+     * 腾讯分时的每根 bar 只有 OHLCV 和成交额，换手率、量比在响应的 qt 实时行情块里：
+     *   qt[30] = 时间(yyyyMMddHHmmss)
+     *   qt[38] = 换手率(%)
+     *   qt[49] = 量比
+     * 该快照是"请求时刻"的最新值：盘中 14:45 调用拿到的就是 14:45 的量比/换手率，
+     * 因此尾盘任务不再依赖收盘后才落库的 stock_daily_quote 快照。
+     *
+     * @param stockCode 股票代码
+     * @param market    市场标识（"1"/"SH"=沪，"0"/"SZ"=深）
+     * @param minuteType 分钟类型：m1/m5/m15/m30/m60
+     * @param date      交易日期（yyyy-MM-dd），只保留该日期的分时bar；为空则返回全部
+     * @return 分时K线 + 换手率/量比快照
+     */
+    public MinuteSnapshot fetchMinuteSnapshot(String stockCode, String market, String minuteType, String date)
+    {
         String prefix;
         if ("1".equals(market) || "SH".equalsIgnoreCase(market)) {
             prefix = "sh";
@@ -275,7 +296,7 @@ public class TencentKlineDataSource
         try
         {
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
-            return parseMinuteResponse(response.getBody(), fullCode, stockCode, minuteType, date);
+            return parseMinuteSnapshot(response.getBody(), fullCode, stockCode, minuteType, date);
         }
         catch (Exception e)
         {
@@ -285,15 +306,18 @@ public class TencentKlineDataSource
     }
 
     /**
-     * 解析腾讯分时K线响应
+     * 解析腾讯分时K线响应（同时解析 qt 实时行情快照中的换手率/量比）
      */
-    private List<StockKline> parseMinuteResponse(String body, String fullCode, String stockCode,
-                                                 String minuteType, String date)
+    private MinuteSnapshot parseMinuteSnapshot(String body, String fullCode, String stockCode,
+                                               String minuteType, String date)
     {
         List<StockKline> result = new ArrayList<>();
+        Double turnoverRate = null;
+        Double volumeRatio = null;
+        String quoteTime = null;
         if (body == null || body.isEmpty())
         {
-            return result;
+            return new MinuteSnapshot(result, null, null, null);
         }
         try
         {
@@ -301,12 +325,40 @@ public class TencentKlineDataSource
             if (root.has("code") && root.get("code").asInt() != 0)
             {
                 log.warn("腾讯分时API返回错误: code={}", root.get("code").asInt());
-                return result;
+                return new MinuteSnapshot(result, null, null, null);
             }
-            JsonNode dataNode = root.path("data").path(fullCode).path(convertMinuteType(minuteType));
+            JsonNode stockNode = root.path("data").path(fullCode);
+            JsonNode dataNode = stockNode.path(convertMinuteType(minuteType));
             if (!dataNode.isArray())
             {
-                return result;
+                return new MinuteSnapshot(result, null, null, null);
+            }
+
+            // 实时行情快照：qt 数组 index 30=时间，38=换手率(%)，49=量比
+            JsonNode qtNode = stockNode.path("qt").path(fullCode);
+            if (qtNode.isArray())
+            {
+                if (qtNode.size() > 38)
+                {
+                    turnoverRate = toDoubleOrNull(qtNode.get(38));
+                }
+                if (qtNode.size() > 49)
+                {
+                    volumeRatio = toDoubleOrNull(qtNode.get(49));
+                }
+                if (qtNode.size() > 30)
+                {
+                    quoteTime = qtNode.get(30).asText(null);
+                }
+                // 防御：接口字段位置若变化，异常值直接丢弃，避免把别的字段当成量比/换手率
+                if (turnoverRate != null && (turnoverRate < 0 || turnoverRate > 500))
+                {
+                    turnoverRate = null;
+                }
+                if (volumeRatio != null && (volumeRatio < 0 || volumeRatio > 500))
+                {
+                    volumeRatio = null;
+                }
             }
 
             SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmm");
@@ -348,7 +400,67 @@ public class TencentKlineDataSource
         {
             log.error("解析腾讯分时K线数据失败", e);
         }
-        return result;
+        return new MinuteSnapshot(result, turnoverRate, volumeRatio, quoteTime);
+    }
+
+    private Double toDoubleOrNull(JsonNode node)
+    {
+        if (node == null || node.isNull())
+        {
+            return null;
+        }
+        String text = node.asText();
+        if (text == null || text.isEmpty() || "--".equals(text))
+        {
+            return null;
+        }
+        try
+        {
+            return new BigDecimal(text).doubleValue();
+        }
+        catch (NumberFormatException e)
+        {
+            return null;
+        }
+    }
+
+    /**
+     * 分时K线 + 实时行情快照（换手率/量比/快照时间）
+     */
+    public static class MinuteSnapshot
+    {
+        private final List<StockKline> bars;
+        private final Double turnoverRate;
+        private final Double volumeRatio;
+        private final String quoteTime;
+
+        public MinuteSnapshot(List<StockKline> bars, Double turnoverRate, Double volumeRatio, String quoteTime)
+        {
+            this.bars = bars;
+            this.turnoverRate = turnoverRate;
+            this.volumeRatio = volumeRatio;
+            this.quoteTime = quoteTime;
+        }
+
+        public List<StockKline> getBars()
+        {
+            return bars;
+        }
+
+        public Double getTurnoverRate()
+        {
+            return turnoverRate;
+        }
+
+        public Double getVolumeRatio()
+        {
+            return volumeRatio;
+        }
+
+        public String getQuoteTime()
+        {
+            return quoteTime;
+        }
     }
 
     /**

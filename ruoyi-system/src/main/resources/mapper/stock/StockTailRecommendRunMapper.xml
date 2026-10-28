@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.StockTailRecommendRunMapper">
+
+    <insert id="insertRun">
+        insert into stock_tail_recommend_run
+            (trade_date, rule_version, candidate_count, hit_count, picked_count, reject_summary, create_time)
+        values
+            (#{tradeDate}, #{ruleVersion}, #{candidateCount}, #{hitCount}, #{pickedCount}, #{rejectSummary}, sysdate())
+        on duplicate key update
+            candidate_count = values(candidate_count),
+            hit_count = values(hit_count),
+            picked_count = values(picked_count),
+            reject_summary = values(reject_summary)
+    </insert>
+
+</mapper>

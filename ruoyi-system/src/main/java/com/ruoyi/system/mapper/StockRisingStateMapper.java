@@ -28,4 +28,9 @@ public interface StockRisingStateMapper {
      * 查询全部波段状态（供尾盘推荐收集上升/震荡候选）
      */
     public List<StockRisingState> selectAll();
+
+    /**
+     * 查询波段状态表最后一次更新时间（用于校验候选池是否新鲜），无数据返回 null
+     */
+    public java.util.Date selectMaxUpdateTime();
 }

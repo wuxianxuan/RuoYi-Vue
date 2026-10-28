@@ -38,6 +38,8 @@ public class StockRisingTrendTask
         catch (Exception e)
         {
             log.error("趋势上涨选股执行失败", e);
+            // 向上抛出，让 RuoYi 任务日志记录为失败：该任务的产出是尾盘推荐的候选池，静默失败会被下游误用
+            throw new RuntimeException("趋势上涨选股执行失败", e);
         }
     }
 
@@ -56,6 +58,7 @@ public class StockRisingTrendTask
         catch (Exception e)
         {
             log.error("趋势上涨选股执行失败", e);
+            throw new RuntimeException("趋势上涨选股执行失败", e);
         }
     }
 }

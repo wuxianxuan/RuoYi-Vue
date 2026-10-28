@@ -43,4 +43,8 @@
         from stock_rising_state
     </select>
 
+    <select id="selectMaxUpdateTime" resultType="java.util.Date">
+        select max(update_time) from stock_rising_state
+    </select>
+
 </mapper>

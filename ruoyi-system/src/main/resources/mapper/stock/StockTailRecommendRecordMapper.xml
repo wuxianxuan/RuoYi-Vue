@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.StockTailRecommendRecordMapper">
+
+    <insert id="insertBatch">
+        insert into stock_tail_recommend_record
+            (trade_date, base_date, rule_version, stock_code, stock_name, picked, reject_reason, rank_no,
+             rec_price, open_pct, close_pct, gain_5d, bias_ma5, close_pos, tail_change,
+             volume_ratio, turnover_rate, amount, score, create_time, update_time)
+        values
+        <foreach collection="list" item="item" separator=",">
+            (#{item.tradeDate}, #{item.baseDate}, #{item.ruleVersion}, #{item.stockCode},
+             #{item.stockName,jdbcType=VARCHAR}, #{item.picked}, #{item.rejectReason,jdbcType=VARCHAR},
+             #{item.rankNo,jdbcType=INTEGER},
+             #{item.recPrice}, #{item.openPct}, #{item.closePct},
+             #{item.gain5d,jdbcType=DECIMAL}, #{item.biasMa5,jdbcType=DECIMAL},
+             #{item.closePos}, #{item.tailChange},
+             #{item.volumeRatio,jdbcType=DECIMAL}, #{item.turnoverRate,jdbcType=DECIMAL},
+             #{item.amount}, #{item.score}, sysdate(), sysdate())
+        </foreach>
+        on duplicate key update
+            base_date = values(base_date),
+            rule_version = values(rule_version),
+            stock_name = values(stock_name),
+            picked = values(picked),
+            reject_reason = values(reject_reason),
+            rank_no = values(rank_no),
+            rec_price = values(rec_price),
+            open_pct = values(open_pct),
+            close_pct = values(close_pct),
+            gain_5d = values(gain_5d),
+            bias_ma5 = values(bias_ma5),
+            close_pos = values(close_pos),
+            tail_change = values(tail_change),
+            volume_ratio = values(volume_ratio),
+            turnover_rate = values(turnover_rate),
+            amount = values(amount),
+            score = values(score),
+            eval_status = null,
+            next_trade_date = null,
+            next_open = null,
+            next_high = null,
+            next_low = null,
+            next_close = null,
+            next_change_pct = null,
+            next_max_gain_pct = null,
+            next_max_drawdown_pct = null,
+            update_time = sysdate()
+    </insert>
+
+    <select id="selectPendingEval" resultType="com.ruoyi.system.domain.stock.StockTailRecommendRecord">
+        select id,
+               DATE_FORMAT(trade_date, '%Y-%m-%d') as tradeDate,
+               stock_code as stockCode,
+               rec_price as recPrice
+        from stock_tail_recommend_record
+        where eval_status is null
+          and trade_date &lt; curdate()
+        order by trade_date asc, rank_no asc
+        limit #{limit}
+    </select>
+
+    <update id="updateEval">
+        update stock_tail_recommend_record
+        set next_trade_date = #{nextTradeDate,jdbcType=VARCHAR},
+            next_open = #{nextOpen,jdbcType=DECIMAL},
+            next_high = #{nextHigh,jdbcType=DECIMAL},
+            next_low = #{nextLow,jdbcType=DECIMAL},
+            next_close = #{nextClose,jdbcType=DECIMAL},
+            next_change_pct = #{nextChangePct,jdbcType=DECIMAL},
+            next_max_gain_pct = #{nextMaxGainPct,jdbcType=DECIMAL},
+            next_max_drawdown_pct = #{nextMaxDrawdownPct,jdbcType=DECIMAL},
+            eval_status = #{evalStatus,jdbcType=VARCHAR},
+            update_time = sysdate()
+        where id = #{id}
+    </update>
+
+    <select id="selectEvaluatedRecent" resultType="com.ruoyi.system.domain.stock.StockTailRecommendRecord">
+        select trade_date as tradeDate,
+               rule_version as ruleVersion,
+               picked as picked,
+               rank_no as rankNo,
+               close_pct as closePct,
+               next_change_pct as nextChangePct,
+               next_max_gain_pct as nextMaxGainPct,
+               next_max_drawdown_pct as nextMaxDrawdownPct
+        from stock_tail_recommend_record
+        where eval_status = 'DONE'
+        <if test="picked != null">
+            and picked = #{picked}
+        </if>
+        order by trade_date desc, rank_no asc
+        limit #{limit}
+    </select>
+
+</mapper>
