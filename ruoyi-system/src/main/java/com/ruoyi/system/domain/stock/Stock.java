@@ -99,6 +99,9 @@ public class Stock extends BaseEntity
     @Excel(name = "市盈率", sort = 21)
     private BigDecimal peRatio;
 
+    /** 止损价（非持久化，来自 stock_rising_state：阶段低点与 2ATR 回撤位取高者） */
+    private BigDecimal stopPrice;
+
     /** 行业筛选参数（非持久化，支持多选） */
     private Long[] industryIds;
 
@@ -238,6 +241,9 @@ public class Stock extends BaseEntity
 
     public void setCurrentPrice(BigDecimal currentPrice) { this.currentPrice = currentPrice; }
     public BigDecimal getCurrentPrice() { return currentPrice; }
+
+    public void setStopPrice(BigDecimal stopPrice) { this.stopPrice = stopPrice; }
+    public BigDecimal getStopPrice() { return stopPrice; }
 
     public void setChangeRate(BigDecimal changeRate) { this.changeRate = changeRate; }
     public BigDecimal getChangeRate() { return changeRate; }

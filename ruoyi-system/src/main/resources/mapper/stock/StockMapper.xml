@@ -270,9 +270,11 @@
                s.current_price, s.change_rate, s.price_change, s.speed,
                s.turnover_rate, s.volume_ratio, s.amplitude,
                s.turnover_amount, s.circulating_shares,
-               s.create_by, s.create_time, s.update_by, s.update_time, s.remark
+               s.create_by, s.create_time, s.update_by, s.update_time, s.remark,
+               st.stop_price as stopPrice
         from stock s
                  inner join stock_group_stock sgs on s.stock_code = sgs.stock_code
+                 left join stock_rising_state st on st.stock_code = s.stock_code
         where sgs.group_id = #{groupId}
         order by s.id desc
     </select>
