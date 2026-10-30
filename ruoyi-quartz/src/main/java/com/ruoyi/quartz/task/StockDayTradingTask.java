@@ -46,6 +46,8 @@ public class StockDayTradingTask
         catch (Exception e)
         {
             log.error("趋势积累池减法 + 日推荐执行失败", e);
+            // 向上抛出，让 RuoYi 任务日志记录为失败
+            throw new RuntimeException("趋势积累池减法 + 日推荐执行失败", e);
         }
     }
 }

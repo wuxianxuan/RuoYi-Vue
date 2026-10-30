@@ -36,6 +36,8 @@ public class StockFundFlowRecommendTask
         catch (Exception e)
         {
             log.error("行业/概念资金流向推荐执行失败", e);
+            // 向上抛出，让 RuoYi 任务日志记录为失败（合并任务据此中止后续步骤）
+            throw new RuntimeException("行业/概念资金流向推荐执行失败", e);
         }
     }
 

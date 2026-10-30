@@ -54,6 +54,17 @@ public class StockQuoteSyncTask
     /** 本次同步写入失败的条数（flush 失败被丢弃的批累计），用于汇总日志区分成功/失败 */
     private int failedCount = 0;
 
+    /** 上一次 sync() 是否成功（行情部分），供合并任务判断是否继续执行资金流向推荐 */
+    private boolean lastSyncOk = false;
+
+    /**
+     * 上一次 sync() 的行情部分是否成功（文件缺失/无数据/解析异常都会置为 false）
+     */
+    public boolean isLastSyncOk()
+    {
+        return lastSyncOk;
+    }
+
     private final ObjectMapper objectMapper = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
@@ -84,6 +95,8 @@ public class StockQuoteSyncTask
         log.info("========== 开始同步同花顺个股行情 ==========");
         log.info("数据文件: {}", dataFilePath);
         failedCount = 0;
+        lastSyncOk = false;
+        boolean quoteOk = false;
 
         try
         {
@@ -167,14 +180,22 @@ public class StockQuoteSyncTask
 
             log.info("stock_daily_quote 快照已保存 (date={})", tradeDate);
             log.info("========== 完成: {} 条, 写入失败 {} 条 ==========", total, failedCount);
+            quoteOk = true;
         }
         catch (Exception e)
         {
             log.error("同步失败: {}", e.getMessage(), e);
         }
 
-        // 行情处理完成后，额外同步行业/概念资金流向
-        syncFundFlow();
+        // 行情处理完成后，额外同步行业/概念资金流向；行情与资金流向都成功，本次同步才算成功
+        // （行情解析抛异常时仍会尝试同步资金流向；行情文件缺失/无数据则直接返回，lastSyncOk 保持 false）
+        boolean fundFlowOk = syncFundFlow();
+        lastSyncOk = quoteOk && fundFlowOk;
+        if (!lastSyncOk)
+        {
+            log.warn("本次同步未完全成功：行情={}，资金流向={}",
+                    quoteOk ? "成功" : "失败", fundFlowOk ? "成功" : "失败");
+        }
     }
 
     // ==================== 资金流向同步 ====================
@@ -183,15 +204,22 @@ public class StockQuoteSyncTask
      * 同步行业/概念资金流向（ths_funds_concept.json / ths_funds_industry.json）
      * 写入 stock_fund_flow 表，按 (plate_type, trade_name, trade_date) INSERT IGNORE 保留全部历史。
      */
-    private void syncFundFlow()
+    private boolean syncFundFlow()
     {
         log.info("========== 开始同步行业/概念资金流向 ==========");
-        syncFundFlowFile(fundFlowConceptFile, "CONCEPT");
-        syncFundFlowFile(fundFlowIndustryFile, "INDUSTRY");
-        log.info("========== 资金流向同步结束 ==========");
+        boolean conceptOk = syncFundFlowFile(fundFlowConceptFile, "CONCEPT");
+        boolean industryOk = syncFundFlowFile(fundFlowIndustryFile, "INDUSTRY");
+        log.info("========== 资金流向同步结束（概念={}，行业={}） ==========",
+                conceptOk ? "成功" : "失败", industryOk ? "成功" : "失败");
+        return conceptOk && industryOk;
     }
 
-    private void syncFundFlowFile(String filePath, String plateType)
+    /**
+     * 同步单个资金流向文件
+     *
+     * @return true=成功写入，false=文件缺失/无数据/异常
+     */
+    private boolean syncFundFlowFile(String filePath, String plateType)
     {
         try
         {
@@ -199,7 +227,7 @@ public class StockQuoteSyncTask
             if (!file.exists())
             {
                 log.warn("资金流向数据文件不存在，跳过: {}", file.getAbsolutePath());
-                return;
+                return false;
             }
 
             JsonNode root = objectMapper.readTree(file);
@@ -207,7 +235,7 @@ public class StockQuoteSyncTask
             if (dataNode == null || !dataNode.isArray() || dataNode.size() == 0)
             {
                 log.warn("资金流向 JSON 文件中无数据: {}", filePath);
-                return;
+                return false;
             }
 
             String fetchTime = root.has("fetchTime") ? root.get("fetchTime").asText() : "";
@@ -234,10 +262,12 @@ public class StockQuoteSyncTask
                 flushFundFlowBatch(batch);
             }
             log.info("资金流向[{}] 已保存 (date={})", plateType, tradeDate);
+            return true;
         }
         catch (Exception e)
         {
             log.error("资金流向[{}] 同步失败: {}", plateType, e.getMessage(), e);
+            return false;
         }
     }
 
