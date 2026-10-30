@@ -3,9 +3,11 @@ package com.ruoyi.system.service.impl;
 import com.ruoyi.system.domain.stock.Stock;
 import com.ruoyi.system.domain.stock.StockDailyQuote;
 import com.ruoyi.system.domain.stock.StockGroup;
+import com.ruoyi.system.domain.stock.StockKline;
 import com.ruoyi.system.domain.stock.StockLimitUpRecord;
 import com.ruoyi.system.domain.stock.StockRisingState;
 import com.ruoyi.system.mapper.StockDailyQuoteMapper;
+import com.ruoyi.system.mapper.StockKlineMapper;
 import com.ruoyi.system.mapper.StockLimitUpRecordMapper;
 import com.ruoyi.system.mapper.StockRisingStateMapper;
 import com.ruoyi.system.service.IStockDayTradingService;
@@ -82,6 +84,9 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
     private StockRisingStateMapper stockRisingStateMapper;
 
     @Autowired
+    private StockKlineMapper stockKlineMapper;
+
+    @Autowired
     private StockLimitUpRecordMapper stockLimitUpRecordMapper;
 
     /** 目标趋势积累分组名（与趋势上涨选股任务保持一致） */
@@ -103,6 +108,14 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
     /** 是否生成「震荡」日推荐分组（默认关闭，只推上升组） */
     @Value("${stock.day-trading.shake-group-enabled:false}")
     private boolean shakeGroupEnabled;
+
+    /** 近5日累计涨幅上限(%)：超过视为已经涨透 */
+    @Value("${stock.day-trading.max-gain-5d:15.0}")
+    private double maxGain5d;
+
+    /** 相对 MA20 乖离上限(%)：超过视为过度偏离均线 */
+    @Value("${stock.day-trading.max-bias-ma20:12.0}")
+    private double maxBiasMa20;
 
     /** 市场环境阈值：上涨家数占比下限（0~1） */
     @Value("${stock.day-trading.min-up-ratio:0.30}")
@@ -227,7 +240,9 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
         }
         log.info("有波段状态的股票 {} 只", stateMap.size());
 
-        // 4. 逐只判定：状态归组 + 换手率过滤 + 评分
+        // 4. 逐只判定：状态归组 + 换手率过滤 + 抗追高 + 评分
+        Map<String, double[]> dailyStatMap = loadDailyStat(codes, endDate);
+        Map<String, Integer> rejects = new LinkedHashMap<>();
         List<ScoredStock> upList = new ArrayList<>();
         List<ScoredStock> shakeList = new ArrayList<>();
         for (String code : codes)
@@ -249,6 +264,21 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
             {
                 continue;
             }
+            // 抗追高：近5日涨幅过大、MA20 乖离过大的不进日推荐
+            double[] stat = dailyStatMap.get(code);
+            if (stat != null)
+            {
+                if (stat[0] > maxGain5d)
+                {
+                    rejects.merge("近5日涨幅过大", 1, Integer::sum);
+                    continue;
+                }
+                if (stat[1] > maxBiasMa20)
+                {
+                    rejects.merge("偏离MA20过远", 1, Integer::sum);
+                    continue;
+                }
+            }
             ScoredStock item = new ScoredStock();
             item.code = code;
             item.score = score(stock, st);
@@ -263,7 +293,8 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
                 shakeList.add(item);
             }
         }
-        log.info("筛选结果：上升 {} 只，震荡 {} 只（换手率≥{}%）", upList.size(), shakeList.size(), minTurnoverRate);
+        log.info("筛选结果：上升 {} 只，震荡 {} 只（换手率≥{}%，抗追高剔除：{}）",
+                upList.size(), shakeList.size(), minTurnoverRate, rejects);
 
         // 5. 按评分降序取前 topN，生成日推荐分组（震荡组默认关闭）
         List<ScoredStock> topUp = takeTop(upList);
@@ -571,6 +602,63 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
     /**
      * 流动性过滤：换手率不足则视为低流动性，不进当日推荐（但保留在积累池）
      */
+    /**
+     * 预加载近5日累计涨幅与 MA20 乖离（用于抗追高过滤）
+     *
+     * @return code -> [gain5d%, biasMa20%]
+     */
+    private Map<String, double[]> loadDailyStat(List<String> codes, LocalDate endDate)
+    {
+        Map<String, double[]> map = new HashMap<>();
+        if (codes == null || codes.isEmpty())
+        {
+            return map;
+        }
+        List<StockKline> klines = stockKlineMapper.selectKlineByCodesAndDays(codes, "D",
+                endDate.minusDays(40).toString(), endDate.toString());
+        if (klines == null)
+        {
+            return map;
+        }
+        Map<String, List<StockKline>> byCode = new HashMap<>();
+        for (StockKline k : klines)
+        {
+            if (k.getStockCode() != null && k.getClosePrice() != null && k.getTradeTime() != null)
+            {
+                byCode.computeIfAbsent(k.getStockCode(), c -> new ArrayList<>()).add(k);
+            }
+        }
+        for (Map.Entry<String, List<StockKline>> e : byCode.entrySet())
+        {
+            List<StockKline> list = e.getValue();
+            list.sort(Comparator.comparing(StockKline::getTradeTime));
+            int n = list.size();
+            if (n < 6)
+            {
+                continue;
+            }
+            double last = list.get(n - 1).getClosePrice().doubleValue();
+            double base5 = list.get(n - 6).getClosePrice().doubleValue();
+            if (base5 <= 0)
+            {
+                continue;
+            }
+            double gain5d = (last - base5) / base5 * 100;
+            int from = Math.max(0, n - 20);
+            double sum = 0;
+            int cnt = 0;
+            for (int i = from; i < n; i++)
+            {
+                sum += list.get(i).getClosePrice().doubleValue();
+                cnt++;
+            }
+            double ma20 = cnt > 0 ? sum / cnt : 0;
+            double bias20 = ma20 > 0 ? (last - ma20) / ma20 * 100 : 0;
+            map.put(e.getKey(), new double[]{gain5d, bias20});
+        }
+        return map;
+    }
+
     private boolean isLowLiquidity(Stock stock)
     {
         if (stock == null)

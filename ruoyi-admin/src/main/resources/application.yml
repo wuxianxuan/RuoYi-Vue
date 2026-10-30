@@ -246,7 +246,10 @@ stock:
     small-cap-yi: 50
     large-cap-yi: 200
     # 每组最多输出数量（按评分取前N，<=0 表示不限）
-    top-n: 15
+    top-n: 10
+    # 抗追高：近5日累计涨幅上限(%)、相对MA20乖离上限(%)
+    max-gain-5d: 15.0
+    max-bias-ma20: 12.0
     # 是否生成「震荡」日推荐分组（默认关闭，只推上升组）
     shake-group-enabled: false
     # 市场环境过滤：上涨家数占比低于阈值时当天不生成日推荐（0~1）
@@ -257,6 +260,37 @@ stock:
     limit-up-top-n: 15
     # 涨停首二板分组名（固定名，不含日期）
     limit-up-group-name: 涨停首二板
+  # 首二板回调尾盘推荐（每个交易日 14:46 运行）
+  # 思路：昨日涨停的首板/二板，次日回调时用分时数据判断承接质量，只推企稳的票
+  limit-up-pullback:
+    # 分组名（固定名，不含日期）
+    group-name: 首二板回调
+    # 分时K线类型
+    minute-type: m5
+    # 每日最多推荐数量（按承接评分取前N）
+    top-n: 10
+    # 回调幅度区间(%)：低于下限视为深跌不接，高于上限不算回调
+    min-pullback: -4.0
+    max-pullback: 1.5
+    # 分时收盘位置下限(0~1)：不在日内最低附近
+    min-close-pos: 0.45
+    # 现价相对分时均价线(VWAP)的偏离下限(%)：低于该值说明承接弱
+    min-vwap-dev: -0.5
+    # 尾盘30分钟涨跌下限(%)：过滤尾盘跳水
+    min-tail-change: -0.5
+    # 涨停日振幅上限(%)：振幅过大说明分歧大
+    max-limit-up-amplitude: 12.0
+    # 是否排除一字板（回测中一字板次日表现最差）
+    exclude-one-line: true
+    # 流通市值下限(亿元)：微盘不接
+    min-cap-yi: 30
+    # 换手率区间(%)
+    min-turnover-rate: 3.0
+    max-turnover-rate: 20.0
+    # 尾盘30分钟对应的5分钟bar数量
+    tail-bars: 6
+    # 并行抓取线程数
+    thread-pool-size: 8
   # 尾盘推荐配置（每个交易日 14:45 运行）
   # 口径：先排"已经涨透/透支"的风险，再看当日强度，最后按评分取前 top-n 只
   tail-recommend:
