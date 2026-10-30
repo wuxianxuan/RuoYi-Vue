@@ -1,11 +1,13 @@
 package com.ruoyi.system.service.impl;
 
 import com.ruoyi.system.datasource.TencentKlineDataSource;
+import com.ruoyi.system.domain.stock.Stock;
 import com.ruoyi.system.domain.stock.StockKline;
 import com.ruoyi.system.domain.stock.StockLimitUpRecord;
 import com.ruoyi.system.domain.stock.StockRisingState;
 import com.ruoyi.system.mapper.StockKlineMapper;
 import com.ruoyi.system.mapper.StockLimitUpRecordMapper;
+import com.ruoyi.system.mapper.StockMapper;
 import com.ruoyi.system.mapper.StockRisingStateMapper;
 import com.ruoyi.system.service.IStockMinuteKlineCollectService;
 import org.slf4j.Logger;
@@ -60,6 +62,9 @@ public class StockMinuteKlineCollectServiceImpl implements IStockMinuteKlineColl
     @Autowired
     private StockRisingStateMapper stockRisingStateMapper;
 
+    @Autowired
+    private StockMapper stockMapper;
+
     /** 分时K线类型 */
     @Value("${stock.minute-collect.minute-type:m5}")
     private String minuteType;
@@ -71,6 +76,10 @@ public class StockMinuteKlineCollectServiceImpl implements IStockMinuteKlineColl
     /** 是否纳入趋势上涨池 */
     @Value("${stock.minute-collect.include-pool:true}")
     private boolean includePool;
+
+    /** 是否全市场股票（默认 true：不确定后续分析用到哪些，全量采集） */
+    @Value("${stock.minute-collect.include-all:true}")
+    private boolean includeAll;
 
     /** 并行线程数 */
     @Value("${stock.minute-collect.thread-pool-size:8}")
@@ -94,7 +103,7 @@ public class StockMinuteKlineCollectServiceImpl implements IStockMinuteKlineColl
             log.info("无候选股票，跳过分时同步");
             return;
         }
-        log.info("分时候选股票 {} 只（涨停股 + 趋势池）", codes.size());
+        log.info("分时候选股票 {} 只（{}）", codes.size(), includeAll ? "全市场" : "涨停股+趋势池");
 
         List<String> codeList = new ArrayList<>(codes);
         Map<String, Date> maxMap = loadMaxMinuteTime(codeList);
@@ -130,10 +139,25 @@ public class StockMinuteKlineCollectServiceImpl implements IStockMinuteKlineColl
         log.info("分时K线同步完成：成功 {} 只，无数据 {} 只，失败 {} 只，新增 {} 行", ok.get(), empty.get(), fail.get(), rows.get());
     }
 
-    /** 候选股票：最近 days 个交易日涨停股 + 趋势池 */
+    /** 候选股票：全市场；或最近 days 个交易日涨停股 + 趋势池 */
     private Set<String> buildCodes(LocalDate end, int days)
     {
         Set<String> codes = new LinkedHashSet<>();
+        if (includeAll)
+        {
+            List<Stock> stocks = stockMapper.selectStocksByMarkets(java.util.Arrays.asList("SH", "SZ"));
+            if (stocks != null)
+            {
+                for (Stock s : stocks)
+                {
+                    if (s.getStockCode() != null)
+                    {
+                        codes.add(s.getStockCode());
+                    }
+                }
+            }
+            return codes;
+        }
         String cursor = end.toString();
         for (int i = 0; i <= days; i++)
         {
