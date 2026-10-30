@@ -97,8 +97,12 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
     private int topN;
 
     /** 市场环境过滤开关：上涨家数占比低于阈值时不生成日推荐 */
-    @Value("${stock.day-trading.market-filter-enabled:true}")
+    @Value("${stock.day-trading.market-filter-enabled:false}")
     private boolean marketFilterEnabled;
+
+    /** 是否生成「震荡」日推荐分组（默认关闭，只推上升组） */
+    @Value("${stock.day-trading.shake-group-enabled:false}")
+    private boolean shakeGroupEnabled;
 
     /** 市场环境阈值：上涨家数占比下限（0~1） */
     @Value("${stock.day-trading.min-up-ratio:0.30}")
@@ -261,11 +265,18 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
         }
         log.info("筛选结果：上升 {} 只，震荡 {} 只（换手率≥{}%）", upList.size(), shakeList.size(), minTurnoverRate);
 
-        // 5. 按评分降序取前 topN，生成两个日推荐分组
+        // 5. 按评分降序取前 topN，生成日推荐分组（震荡组默认关闭）
         List<ScoredStock> topUp = takeTop(upList);
-        List<ScoredStock> topShake = takeTop(shakeList);
         createDailyGroup(topUp, upList.size(), endDate, "上升");
-        createDailyGroup(topShake, shakeList.size(), endDate, "震荡");
+        if (shakeGroupEnabled)
+        {
+            List<ScoredStock> topShake = takeTop(shakeList);
+            createDailyGroup(topShake, shakeList.size(), endDate, "震荡");
+        }
+        else
+        {
+            log.info("震荡组已关闭（shake-group-enabled=false），仅输出上升组");
+        }
     }
 
     /**

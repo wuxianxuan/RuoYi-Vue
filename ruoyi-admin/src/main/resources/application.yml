@@ -247,8 +247,11 @@ stock:
     large-cap-yi: 200
     # 每组最多输出数量（按评分取前N，<=0 表示不限）
     top-n: 15
+    # 是否生成「震荡」日推荐分组（默认关闭，只推上升组）
+    shake-group-enabled: false
     # 市场环境过滤：上涨家数占比低于阈值时当天不生成日推荐（0~1）
-    market-filter-enabled: true
+    # 回测（2026-07~10）显示该过滤为负贡献，默认关闭
+    market-filter-enabled: false
     min-up-ratio: 0.30
     # 首二板最多输出数量（按封板时间取前N，<=0 表示不限）
     limit-up-top-n: 15
