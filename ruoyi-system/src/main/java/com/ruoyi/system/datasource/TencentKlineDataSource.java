@@ -281,6 +281,16 @@ public class TencentKlineDataSource
      */
     public MinuteSnapshot fetchMinuteSnapshot(String stockCode, String market, String minuteType, String date)
     {
+        return fetchMinuteSnapshot(stockCode, market, minuteType, date, 320);
+    }
+
+    /**
+     * 拉取分时K线 + 实时行情快照，可指定拉取的 bar 数量
+     *
+     * @param bars 拉取多少根（1~320）。日常增量同步只需最近 2 天（96 根），响应体积约为 320 根的 1/3
+     */
+    public MinuteSnapshot fetchMinuteSnapshot(String stockCode, String market, String minuteType, String date, int bars)
+    {
         String prefix;
         if ("1".equals(market) || "SH".equalsIgnoreCase(market)) {
             prefix = "sh";
@@ -289,9 +299,10 @@ public class TencentKlineDataSource
         }
         String fullCode = prefix + stockCode;
         String type = convertMinuteType(minuteType);
-        String param = fullCode + "," + type + ",,320";
+        int count = Math.max(1, Math.min(bars, 320));
+        String param = fullCode + "," + type + ",," + count;
         String url = minuteBaseUrl + "/appstock/app/kline/mkline?param=" + param;
-        log.info("腾讯分时K线请求: {}", url);
+        log.debug("腾讯分时K线请求: {}", url);
 
         try
         {

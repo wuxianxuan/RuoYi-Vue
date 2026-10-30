@@ -81,6 +81,10 @@ public class StockMinuteKlineCollectServiceImpl implements IStockMinuteKlineColl
     @Value("${stock.minute-collect.include-all:true}")
     private boolean includeAll;
 
+    /** 每只票每次拉取的 bar 数量（增量只需最近几天；320=腾讯上限） */
+    @Value("${stock.minute-collect.fetch-bars:96}")
+    private int fetchBars;
+
     /** 并行线程数 */
     @Value("${stock.minute-collect.thread-pool-size:8}")
     private int threadPoolSize;
@@ -239,7 +243,7 @@ public class StockMinuteKlineCollectServiceImpl implements IStockMinuteKlineColl
         try
         {
             TencentKlineDataSource.MinuteSnapshot snap = tencentKlineDataSource.fetchMinuteSnapshot(
-                    code, inferMarket(code), minuteType, null);
+                    code, inferMarket(code), minuteType, null, fetchBars);
             List<StockKline> bars = snap.getBars();
             if (bars == null || bars.isEmpty())
             {

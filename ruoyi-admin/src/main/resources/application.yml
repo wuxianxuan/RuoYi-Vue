@@ -271,8 +271,10 @@ stock:
     minute-type: m5
     # include-all=false 时，是否纳入趋势上涨池（stock_rising_state）
     include-pool: true
-    # 并行线程数
-    thread-pool-size: 16
+    # 每只票每次拉取的 bar 数量（96=最近2天，响应体积约为320根的1/3）
+    fetch-bars: 96
+    # 并行线程数（日K同步用50，分时对齐后全市场约3-5分钟）
+    thread-pool-size: 32
   # 首二板回调尾盘推荐（每个交易日 14:46 运行）
   # 思路：昨日涨停的首板/二板，次日回调时用分时数据判断承接质量，只推企稳的票
   limit-up-pullback:
