@@ -35,6 +35,9 @@ public class StockRisingState {
     /** 最近一次进池日期（yyyy-MM-dd） */
     private String enterDate;
 
+    /** 止损价：阶段低点与「阶段高点 - 2ATR」取高者（跌破即视为波段结束） */
+    private Double stopPrice;
+
     /** 创建时间 */
     private Date createTime;
 

@@ -66,8 +66,8 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     @Autowired
     private StockRisingStateMapper stockRisingStateMapper;
 
-    /** 回看日历天数（重算锚点，需覆盖 MA/ATR 周期 + 波段历史） */
-    @Value("${stock.rising-trend.lookback-days:90}")
+    /** 回看日历天数（重算锚点，需覆盖 MA/ATR 周期 + 波段历史；需留出 20 根预热 K 线） */
+    @Value("${stock.rising-trend.lookback-days:120}")
     private int lookbackDays;
 
     /** 进池窗口天数（N）：近 N 日内无涨停、区间涨幅达标、创 N 日新高 */
@@ -98,6 +98,10 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     @Value("${stock.rising-trend.delete-atr:2.0}")
     private double deleteAtr;
 
+    /** 删除后重新进池的冷却交易日数：避免同一波段被反复「删除-重进」 */
+    @Value("${stock.rising-trend.reentry-cooldown-days:10}")
+    private int reentryCooldownDays;
+
     /** 是否排除 ST/*ST 股票 */
     @Value("${stock.rising-trend.exclude-st:true}")
     private boolean excludeSt;
@@ -120,8 +124,8 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
         LocalDate endDate = parseDate(date);
         LocalDate startDate = endDate.minusDays(lookbackDays);
         log.info("========== 趋势上涨选股开始 ==========");
-        log.info("参数：endDate={} startDate={} lookbackDays={} entryWindow={} minGain={} maPeriod={} atrPeriod={} shakeAtr={} deleteAtr={} excludeSt={} markets={} excludeCodePrefixes={}",
-                endDate, startDate, lookbackDays, entryWindow, minGain, maPeriod, atrPeriod, shakeAtr, deleteAtr, excludeSt, markets, excludeCodePrefixes);
+        log.info("参数：endDate={} startDate={} lookbackDays={} entryWindow={} minGain={} maPeriod={} atrPeriod={} shakeAtr={} deleteAtr={} reentryCooldownDays={} excludeSt={} markets={} excludeCodePrefixes={}",
+                endDate, startDate, lookbackDays, entryWindow, minGain, maPeriod, atrPeriod, shakeAtr, deleteAtr, reentryCooldownDays, excludeSt, markets, excludeCodePrefixes);
 
         // 1. 查询候选股票基础信息
         List<Stock> stocks = stockMapper.selectStocksByMarkets(parseMarkets());
@@ -180,6 +184,7 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
             row.setLowPrice(st.lowPrice);
             row.setLowDate(st.lowDate);
             row.setEnterDate(st.enterDate);
+            row.setStopPrice(st.stopPrice > 0 ? st.stopPrice : null);
             pool.add(row);
             if ("上升".equals(st.status)) up++;
             else if ("震荡".equals(st.status)) shake++;
@@ -263,6 +268,16 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
 
             if (!st.inPool)
             {
+                // 指标周期不足时不进池：MA/ATR 都需要足够历史，否则会把 MA5 当成 MA20、把 4 日 ATR 当成 ATR20
+                if (di + 1 < maPeriod || di + 1 < atrPeriod)
+                {
+                    continue;
+                }
+                // 删除后的冷却期：避免同一波段被反复「删除-重进」
+                if (st.lastDeleteIdx >= 0 && di - st.lastDeleteIdx < reentryCooldownDays)
+                {
+                    continue;
+                }
                 if (hasLimitUp)
                 {
                     continue;
@@ -321,6 +336,7 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
                     if (pullback > deleteAtr)
                     {
                         st.inPool = false;
+                        st.lastDeleteIdx = di;
                     }
                     else if (pullback <= shakeAtr)
                     {
@@ -332,6 +348,20 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
                     }
                 }
             }
+        }
+
+        // 计算终止日的止损价：阶段低点与「阶段高点 - 2ATR」取高者（跌破任一即视为波段结束）
+        if (st.inPool && st.highPrice > 0)
+        {
+            double lastClose = c[n - 1];
+            double atrLast = atr(h, l, c, n - 1);
+            double stop = Math.max(st.lowPrice, st.highPrice - deleteAtr * atrLast);
+            // 兜底：止损位必须低于现价，否则至少留 2% 空间
+            if (!(stop > 0) || stop >= lastClose)
+            {
+                stop = lastClose * 0.98;
+            }
+            st.stopPrice = stop;
         }
         return st;
     }
@@ -394,6 +424,10 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
         private double lowPrice;
         private String lowDate;
         private String enterDate;
+        /** 最近一次被删除的K线下标（-1 表示未删除过），用于重进冷却 */
+        private int lastDeleteIdx = -1;
+        /** 止损价（阶段低点与 2ATR 回撤位取高者） */
+        private double stopPrice;
     }
 
     /**
@@ -428,8 +462,8 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
      */
     private String buildRemark(LocalDate endDate, int total, int up, int shake, int cb)
     {
-        return String.format("%s（截止%s，进池=近%d日涨≥%.0f%%且创%d日新高且收盘>MA%d，波段=震荡≤%.0fATR/删除>%.0fATR，当前%d只：上升%d/震荡%d/回调%d）",
-                groupName, endDate, entryWindow, minGain, entryWindow, maPeriod, shakeAtr, deleteAtr, total, up, shake, cb);
+        return String.format("%s（截止%s，进池=近%d日涨≥%.0f%%且创%d日新高且收盘>MA%d，波段=震荡≤%.0fATR/删除>%.0fATR，删除后冷却%d日，止损=阶段低点与%.0fATR取高；当前%d只：上升%d/震荡%d/回调%d）",
+                groupName, endDate, entryWindow, minGain, entryWindow, maPeriod, shakeAtr, deleteAtr, reentryCooldownDays, deleteAtr, total, up, shake, cb);
     }
 
     /**

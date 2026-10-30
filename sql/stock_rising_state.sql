@@ -11,6 +11,7 @@ CREATE TABLE `stock_rising_state` (
                                       `low_price` decimal(12,3) DEFAULT NULL COMMENT '阶段最低收盘价',
                                       `low_date` date DEFAULT NULL COMMENT '阶段最低日期',
                                       `enter_date` date DEFAULT NULL COMMENT '最近一次进池日期',
+                                      `stop_price` decimal(12,3) DEFAULT NULL COMMENT '止损价（阶段低点与2ATR回撤位取高者）',
                                       `create_time` datetime DEFAULT NULL COMMENT '创建时间',
                                       `update_time` datetime DEFAULT NULL COMMENT '更新时间',
                                       PRIMARY KEY (`id`),

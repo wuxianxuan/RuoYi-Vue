@@ -10,10 +10,10 @@
 
     <insert id="insertBatch">
         insert into stock_rising_state
-            (stock_code, status, high_price, high_date, low_price, low_date, enter_date, create_time, update_time)
+            (stock_code, status, high_price, high_date, low_price, low_date, enter_date, stop_price, create_time, update_time)
         values
         <foreach collection="list" item="item" separator=",">
-            (#{item.stockCode}, #{item.status}, #{item.highPrice}, #{item.highDate}, #{item.lowPrice}, #{item.lowDate}, #{item.enterDate}, sysdate(), sysdate())
+            (#{item.stockCode}, #{item.status}, #{item.highPrice}, #{item.highDate}, #{item.lowPrice}, #{item.lowDate}, #{item.enterDate}, #{item.stopPrice,jdbcType=DECIMAL}, sysdate(), sysdate())
         </foreach>
     </insert>
 
@@ -24,7 +24,8 @@
                DATE_FORMAT(high_date, '%Y-%m-%d') as highDate,
                low_price as lowPrice,
                DATE_FORMAT(low_date, '%Y-%m-%d') as lowDate,
-               DATE_FORMAT(enter_date, '%Y-%m-%d') as enterDate
+               DATE_FORMAT(enter_date, '%Y-%m-%d') as enterDate,
+               stop_price as stopPrice
         from stock_rising_state
         where stock_code in
         <foreach collection="stockCodes" item="code" open="(" separator="," close=")">
@@ -39,7 +40,8 @@
                DATE_FORMAT(high_date, '%Y-%m-%d') as highDate,
                low_price as lowPrice,
                DATE_FORMAT(low_date, '%Y-%m-%d') as lowDate,
-               DATE_FORMAT(enter_date, '%Y-%m-%d') as enterDate
+               DATE_FORMAT(enter_date, '%Y-%m-%d') as enterDate,
+               stop_price as stopPrice
         from stock_rising_state
     </select>
 
