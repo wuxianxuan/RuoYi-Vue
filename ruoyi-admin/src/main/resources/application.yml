@@ -260,13 +260,15 @@ stock:
     limit-up-top-n: 15
     # 涨停首二板分组名（固定名，不含日期）
     limit-up-group-name: 涨停首二板
-  # 涨停股分时K线落库（每个交易日 15:05 运行）
-  # 每只涨停股会在 D、D+1、D+2、D+3 各被采集一次，自动攒齐 4 天分时，便于后续分析
+  # 分时K线增量落库（由 stockKlineSyncTask 在日K同步完成后调用）
+  # 覆盖：最近N个交易日涨停股 + 趋势上涨池，只写库中尚不存在的 bar
   minute-collect:
+    # 是否启用
+    enabled: true
     # 分时K线类型（写入 stock_kline.kline_type）
     minute-type: m5
-    # 往前覆盖几个交易日的涨停股（3 = 当天 + 前3天，正好覆盖 D~D+3）
-    days-back: 3
+    # 是否纳入趋势上涨池（stock_rising_state）
+    include-pool: true
     # 并行线程数
     thread-pool-size: 8
   # 首二板回调尾盘推荐（每个交易日 14:46 运行）

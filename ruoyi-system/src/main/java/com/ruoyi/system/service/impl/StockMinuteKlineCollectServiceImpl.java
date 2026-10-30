@@ -3,8 +3,10 @@ package com.ruoyi.system.service.impl;
 import com.ruoyi.system.datasource.TencentKlineDataSource;
 import com.ruoyi.system.domain.stock.StockKline;
 import com.ruoyi.system.domain.stock.StockLimitUpRecord;
+import com.ruoyi.system.domain.stock.StockRisingState;
 import com.ruoyi.system.mapper.StockKlineMapper;
 import com.ruoyi.system.mapper.StockLimitUpRecordMapper;
+import com.ruoyi.system.mapper.StockRisingStateMapper;
 import com.ruoyi.system.service.IStockMinuteKlineCollectService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,23 +15,31 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 /**
- * 涨停股分时K线落库实现
+ * 分时K线增量落库实现
  *
- * 落库范围：目标交易日 X 的当天分时，股票 = 最近 daysBack 个交易日内涨停过的股票，
- * 即每只涨停股都会在「涨停日 D、D+1、D+2、D+3」各被采集一次，自动拼齐 4 天分时。
+ * 候选范围（取并集）：
+ *  1. 最近 days 个交易日涨停过的股票 —— 服务首板/二板回调策略；
+ *  2. stock_rising_state 里的全部池内股票 —— 服务趋势上升策略的后续盘口分析。
  *
- * 存储：复用 stock_kline 表，kline_type = m5（char(2) 足够），唯一键 (code,type,time) 天然幂等。
+ * 增量策略：先查每只票库中已有的最大分时时间，只写更晚的 bar。
+ * 首次运行会补齐腾讯接口能给的最近 ~320 根（约 7 个交易日），之后每天只写当天新增。
+ *
+ * 存储复用 stock_kline（kline_type=m5），唯一键 (code,type,time) 天然幂等。
  *
  * @author ruoyi
  */
@@ -47,28 +57,85 @@ public class StockMinuteKlineCollectServiceImpl implements IStockMinuteKlineColl
     @Autowired
     private StockLimitUpRecordMapper stockLimitUpRecordMapper;
 
+    @Autowired
+    private StockRisingStateMapper stockRisingStateMapper;
+
     /** 分时K线类型 */
     @Value("${stock.minute-collect.minute-type:m5}")
     private String minuteType;
 
-    /** 往前覆盖几个交易日的涨停股（默认3：加上当天正好覆盖 D~D+3） */
-    @Value("${stock.minute-collect.days-back:3}")
-    private int daysBack;
+    /** 是否启用分时落库 */
+    @Value("${stock.minute-collect.enabled:true}")
+    private boolean enabled;
+
+    /** 是否纳入趋势上涨池 */
+    @Value("${stock.minute-collect.include-pool:true}")
+    private boolean includePool;
 
     /** 并行线程数 */
     @Value("${stock.minute-collect.thread-pool-size:8}")
     private int threadPoolSize;
 
     @Override
-    public void execute(String date)
+    public void syncMinuteKline(int days)
     {
-        LocalDate day = parseDate(date);
-        log.info("========== 涨停股分时K线落库开始：{} ==========", day);
+        if (!enabled)
+        {
+            log.info("分时K线落库已关闭（minute-collect.enabled=false），跳过");
+            return;
+        }
+        LocalDate end = LocalDate.now();
+        LocalDate start = end.minusDays(Math.max(days, 1) + 1L);
+        log.info("========== 分时K线增量同步开始：{} ~ {} ==========", start, end);
 
-        // 1. 收集最近 daysBack 个交易日涨停过的股票（含当天）
+        Set<String> codes = buildCodes(end, days);
+        if (codes.isEmpty())
+        {
+            log.info("无候选股票，跳过分时同步");
+            return;
+        }
+        log.info("分时候选股票 {} 只（涨停股 + 趋势池）", codes.size());
+
+        List<String> codeList = new ArrayList<>(codes);
+        Map<String, Date> maxMap = loadMaxMinuteTime(codeList);
+
+        AtomicInteger ok = new AtomicInteger();
+        AtomicInteger empty = new AtomicInteger();
+        AtomicInteger fail = new AtomicInteger();
+        AtomicInteger rows = new AtomicInteger();
+        ExecutorService pool = Executors.newFixedThreadPool(threadPoolSize);
+        List<Future<?>> futures = new ArrayList<>(codeList.size());
+        try
+        {
+            for (String code : codeList)
+            {
+                futures.add(pool.submit(() -> collectOne(code, start, maxMap.get(code), ok, empty, fail, rows)));
+            }
+        }
+        finally
+        {
+            pool.shutdown();
+        }
+        for (Future<?> f : futures)
+        {
+            try
+            {
+                f.get(60, TimeUnit.SECONDS);
+            }
+            catch (Exception e)
+            {
+                log.debug("分时同步任务异常: {}", e.getMessage());
+            }
+        }
+        log.info("分时K线同步完成：成功 {} 只，无数据 {} 只，失败 {} 只，新增 {} 行", ok.get(), empty.get(), fail.get(), rows.get());
+    }
+
+    /** 候选股票：最近 days 个交易日涨停股 + 趋势池 */
+    private Set<String> buildCodes(LocalDate end, int days)
+    {
         Set<String> codes = new LinkedHashSet<>();
-        String cursor = day.toString();
-        for (int i = 0; i <= daysBack; i++)
+        String cursor = end.toString();
+        for (int i = 0; i <= days; i++)
         {
             List<StockLimitUpRecord> records = stockLimitUpRecordMapper.selectByTradeDate(cursor);
             if (records != null)
@@ -87,78 +154,80 @@ public class StockMinuteKlineCollectServiceImpl implements IStockMinuteKlineColl
                     codes.add(code);
                 }
             }
-            if (i < daysBack)
+            String prev = stockKlineMapper.selectMaxTradeDateBefore(cursor);
+            if (prev == null)
             {
-                String prev = stockKlineMapper.selectMaxTradeDateBefore(cursor);
-                if (prev == null)
+                break;
+            }
+            cursor = prev;
+        }
+        if (includePool)
+        {
+            List<StockRisingState> states = stockRisingStateMapper.selectAll();
+            if (states != null)
+            {
+                for (StockRisingState st : states)
                 {
-                    break;
+                    if (st.getStockCode() != null)
+                    {
+                        codes.add(st.getStockCode());
+                    }
                 }
-                cursor = prev;
             }
         }
-        if (codes.isEmpty())
-        {
-            log.warn("最近 {} 个交易日无涨停记录，跳过", daysBack + 1);
-            return;
-        }
-        log.info("待采集股票 {} 只（覆盖 {} 起 {} 个交易日）", codes.size(), cursor, daysBack + 1);
-
-        // 2. 并行抓取当日分时并落库
-        AtomicInteger ok = new AtomicInteger();
-        AtomicInteger empty = new AtomicInteger();
-        AtomicInteger fail = new AtomicInteger();
-        AtomicInteger rows = new AtomicInteger();
-        ExecutorService pool = Executors.newFixedThreadPool(threadPoolSize);
-        List<Future<?>> futures = new ArrayList<>();
-        try
-        {
-            for (String code : codes)
-            {
-                futures.add(pool.submit(() -> collectOne(code, day, ok, empty, fail, rows)));
-            }
-        }
-        finally
-        {
-            pool.shutdown();
-        }
-        for (Future<?> f : futures)
-        {
-            try
-            {
-                f.get(30, TimeUnit.SECONDS);
-            }
-            catch (Exception e)
-            {
-                log.debug("分时采集任务异常: {}", e.getMessage());
-            }
-        }
-        log.info("落库完成：成功 {} 只，无数据 {} 只，失败 {} 只，写入 {} 行", ok.get(), empty.get(), fail.get(), rows.get());
+        return codes;
     }
 
-    private void collectOne(String code, LocalDate day, AtomicInteger ok, AtomicInteger empty,
-                            AtomicInteger fail, AtomicInteger rows)
+    /** 每只票库中已有的最大分时时间 */
+    private Map<String, Date> loadMaxMinuteTime(List<String> codes)
+    {
+        Map<String, Date> map = new java.util.HashMap<>();
+        if (codes.isEmpty())
+        {
+            return map;
+        }
+        try
+        {
+            List<Map<String, Object>> rows = stockKlineMapper.selectMaxMinuteTime(codes, minuteType);
+            if (rows != null)
+            {
+                for (Map<String, Object> row : rows)
+                {
+                    Object code = row.get("stockCode");
+                    Object maxTime = row.get("maxTime");
+                    if (code != null && maxTime instanceof Date)
+                    {
+                        map.put(code.toString(), (Date) maxTime);
+                    }
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            log.warn("查询已有分时最大时间失败，本次全量覆盖: {}", e.getMessage());
+        }
+        return map;
+    }
+
+    private void collectOne(String code, LocalDate start, Date maxTime,
+                            AtomicInteger ok, AtomicInteger empty, AtomicInteger fail, AtomicInteger rows)
     {
         try
         {
             TencentKlineDataSource.MinuteSnapshot snap = tencentKlineDataSource.fetchMinuteSnapshot(
-                    code, inferMarket(code), minuteType, day.toString());
+                    code, inferMarket(code), minuteType, null);
             List<StockKline> bars = snap.getBars();
             if (bars == null || bars.isEmpty())
             {
                 empty.incrementAndGet();
                 return;
             }
-            List<StockKline> list = new ArrayList<>(bars.size());
-            for (StockKline b : bars)
-            {
-                if (b.getTradeTime() == null || b.getClosePrice() == null)
-                {
-                    continue;
-                }
-                b.setKlineType(minuteType);
-                list.add(b);
-            }
+            List<StockKline> list = bars.stream()
+                    .filter(b -> b.getTradeTime() != null && b.getClosePrice() != null)
+                    .filter(b -> !toLocalDate(b.getTradeTime()).isBefore(start))
+                    .filter(b -> maxTime == null || b.getTradeTime().after(maxTime))
+                    .peek(b -> b.setKlineType(minuteType))
+                    .collect(Collectors.toList());
             if (list.isEmpty())
             {
                 empty.incrementAndGet();
@@ -171,29 +240,17 @@ public class StockMinuteKlineCollectServiceImpl implements IStockMinuteKlineColl
         catch (Exception e)
         {
             fail.incrementAndGet();
-            log.debug("分时采集失败 code={}: {}", code, e.getMessage());
+            log.debug("分时同步失败 code={}: {}", code, e.getMessage());
         }
+    }
+
+    private LocalDate toLocalDate(Date date)
+    {
+        return java.time.Instant.ofEpochMilli(date.getTime()).atZone(ZoneId.systemDefault()).toLocalDate();
     }
 
     private String inferMarket(String code)
     {
         return code.startsWith("6") ? "SH" : "SZ";
-    }
-
-    private LocalDate parseDate(String date)
-    {
-        if (date == null || date.trim().isEmpty())
-        {
-            return LocalDate.now();
-        }
-        try
-        {
-            return LocalDate.parse(date.trim());
-        }
-        catch (Exception e)
-        {
-            log.warn("日期参数 [{}] 解析失败，使用当前日期", date);
-            return LocalDate.now();
-        }
     }
 }

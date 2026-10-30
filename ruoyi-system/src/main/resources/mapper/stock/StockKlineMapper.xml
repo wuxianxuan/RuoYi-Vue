@@ -158,4 +158,16 @@
         and date(trade_time) &lt; #{endDate}
     </select>
 
+    <select id="selectMaxMinuteTime" resultType="java.util.Map">
+        select stock_code as stockCode,
+               max(trade_time) as maxTime
+        from stock_kline
+        where kline_type = #{klineType}
+        and stock_code in
+        <foreach collection="stockCodes" item="code" open="(" separator="," close=")">
+            #{code}
+        </foreach>
+        group by stock_code
+    </select>
+
 </mapper>

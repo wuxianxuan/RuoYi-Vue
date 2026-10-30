@@ -3,6 +3,7 @@ package com.ruoyi.quartz.task;
 import com.ruoyi.system.domain.stock.Stock;
 import com.ruoyi.system.mapper.StockMapper;
 import com.ruoyi.system.service.IStockKlineService;
+import com.ruoyi.system.service.IStockMinuteKlineCollectService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +34,9 @@ public class StockKlineSyncTask
 
     @Autowired
     private IStockKlineService stockKlineService;
+
+    @Autowired
+    private IStockMinuteKlineCollectService stockMinuteKlineCollectService;
 
     @Autowired
     @Qualifier("threadPoolTaskExecutor")
@@ -127,6 +131,16 @@ public class StockKlineSyncTask
         catch (Exception e)
         {
             log.error("K线同步任务执行异常", e);
+        }
+
+        // 日K同步完成后，增量同步分时K线（覆盖最近涨停股 + 趋势上涨池），供后续盘口分析使用
+        try
+        {
+            stockMinuteKlineCollectService.syncMinuteKline(days);
+        }
+        catch (Exception e)
+        {
+            log.error("分时K线同步失败（不影响已完成的日K）", e);
         }
     }
 

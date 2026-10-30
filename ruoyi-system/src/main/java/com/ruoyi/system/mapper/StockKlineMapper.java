@@ -39,4 +39,10 @@ public interface StockKlineMapper {
      * 查询 endDate 之前最大的日K交易日（yyyy-MM-dd），无则返回 null
      */
     public String selectMaxTradeDateBefore(@Param("endDate") String endDate);
+
+    /**
+     * 批量查询指定类型K线在库中的最大时间（用于分时增量同步），返回 stockCode / maxTime
+     */
+    public List<java.util.Map<String, Object>> selectMaxMinuteTime(@Param("stockCodes") List<String> stockCodes,
+                                                                   @Param("klineType") String klineType);
 }

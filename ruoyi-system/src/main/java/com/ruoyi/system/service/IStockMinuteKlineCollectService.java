@@ -1,17 +1,22 @@
 package com.ruoyi.system.service;
 
 /**
- * 涨停股分时K线落库 Service
+ * 分时K线增量落库 Service
  *
- * 每个交易日收盘后，把「最近 N 个交易日涨停过的股票」当日的分时 K 线写入 stock_kline（kline_type=m5），
- * 这样每只涨停股都会自动攒下「涨停日 + 之后 3 天」的分时数据，供后续分析（例如第三天高开概率）。
+ * 由日K同步任务（stockKlineSyncTask.syncKline）在日K同步完成后调用：
+ * 把「最近 N 个交易日涨停过的股票 + 趋势上涨池内的股票」的分时 K 线增量写入
+ * stock_kline（kline_type=m5），只写比库中已有更晚的 bar，避免每天重复写 7 天数据。
+ *
+ * 覆盖范围同时服务两类策略：
+ *  - 首板/二板回调（涨停股 D~D+3 的分时）
+ *  - 趋势上升选股（池内股票的分时，用于后续分析盘口结构）
  */
 public interface IStockMinuteKlineCollectService
 {
     /**
-     * 落库指定交易日的分时K线
+     * 增量同步分时K线
      *
-     * @param date 需要落库的交易日（yyyy-MM-dd），为空则默认当天
+     * @param days 最近多少个自然日（与日K同步的天数保持一致）
      */
-    void execute(String date);
+    void syncMinuteKline(int days);
 }
