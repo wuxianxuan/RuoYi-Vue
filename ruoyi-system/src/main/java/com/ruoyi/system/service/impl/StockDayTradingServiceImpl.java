@@ -1,9 +1,11 @@
 package com.ruoyi.system.service.impl;
 
 import com.ruoyi.system.domain.stock.Stock;
+import com.ruoyi.system.domain.stock.StockDailyQuote;
 import com.ruoyi.system.domain.stock.StockGroup;
 import com.ruoyi.system.domain.stock.StockLimitUpRecord;
 import com.ruoyi.system.domain.stock.StockRisingState;
+import com.ruoyi.system.mapper.StockDailyQuoteMapper;
 import com.ruoyi.system.mapper.StockLimitUpRecordMapper;
 import com.ruoyi.system.mapper.StockRisingStateMapper;
 import com.ruoyi.system.service.IStockDayTradingService;
@@ -14,14 +16,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.sql.Date;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -33,13 +38,15 @@ import java.util.stream.Collectors;
  *     并把每只池内股票的波段状态写入 stock_rising_state 表；本任务按状态拆成两个分组：
  *     1. 上升组：波段状态=上升（当前创新高、动量最强）；
  *     2. 震荡组：波段状态=震荡（浅回撤 ≤1ATR，上升趋势中的小幅回调）；
- *     3. 回调股（1~2ATR 回撤）不进日推荐；换手率 < 门槛的不进日推荐。
+ *     3. 回调股（1~2ATR 回撤）不进日推荐；换手率不达标的不进日推荐（门槛按流通市值分档）。
  *     通过过滤的股票按评分（阶段位置 + 量能 + 换手适中 + 涨幅适中）降序，每组只取前 topN 只，
  *     日志同时输出每只的止损价（阶段低点与 2ATR 回撤位取高者）。
  *     分组名 = 积累池分组名 + "_" + 日期 + "_" + 状态。
  *
+ *     市场环境过滤：当日上涨家数占比低于 min-up-ratio 时，直接不生成日推荐（趋势跟踪在普跌日胜率低）。
+ *
  * 二、涨停首二板分组：遍历当日涨停记录，过滤出首板/二板（up_num 为空=首板，
- *     「N天2板」=二板），生成一个「涨停首二板_日期」分组。
+ *     「N天2板」=二板），按封板时间升序取前 limit-up-top-n 只，生成「涨停首二板_日期」分组。
  *
  * @author ruoyi
  */
@@ -58,6 +65,14 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
         private double score;
         private Double stopPrice;
         private double close;
+    }
+
+    /** 涨停首二板候选（封板时间用于排序） */
+    private static class LimitUpPick
+    {
+        private String code;
+        private String sealTime;
+        private int board;
     }
 
     @Autowired
@@ -80,6 +95,37 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
     /** 每组日推荐最多输出数量（按评分取前N，<=0 表示不限） */
     @Value("${stock.day-trading.top-n:15}")
     private int topN;
+
+    /** 市场环境过滤开关：上涨家数占比低于阈值时不生成日推荐 */
+    @Value("${stock.day-trading.market-filter-enabled:true}")
+    private boolean marketFilterEnabled;
+
+    /** 市场环境阈值：上涨家数占比下限（0~1） */
+    @Value("${stock.day-trading.min-up-ratio:0.30}")
+    private double minUpRatio;
+
+    /** 换手率门槛分档：流通市值 < smallCapYi 亿用小盘门槛 */
+    @Value("${stock.day-trading.small-cap-turnover-rate:5.0}")
+    private double smallCapTurnoverRate;
+
+    /** 换手率门槛分档：流通市值 > largeCapYi 亿用大盘门槛 */
+    @Value("${stock.day-trading.large-cap-turnover-rate:1.5}")
+    private double largeCapTurnoverRate;
+
+    /** 小盘市值上限（亿元） */
+    @Value("${stock.day-trading.small-cap-yi:50}")
+    private double smallCapYi;
+
+    /** 大盘市值下限（亿元） */
+    @Value("${stock.day-trading.large-cap-yi:200}")
+    private double largeCapYi;
+
+    /** 首二板最多输出数量（按封板时间取前N，<=0 表示不限） */
+    @Value("${stock.day-trading.limit-up-top-n:15}")
+    private int limitUpTopN;
+
+    @Autowired
+    private StockDailyQuoteMapper stockDailyQuoteMapper;
 
     /** 涨停首二板分组名（固定名，不含日期） */
     @Value("${stock.day-trading.limit-up-group-name:涨停首二板}")
@@ -115,6 +161,27 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
      */
     private void generateBandGroups(LocalDate endDate)
     {
+        // 0. 市场环境过滤：普跌日不出日推荐（趋势跟踪在弱市里胜率低）
+        if (marketFilterEnabled)
+        {
+            double ratio = marketUpRatio(endDate);
+            if (ratio < 0)
+            {
+                log.warn("无 {} 行情快照，跳过市场环境过滤", endDate);
+            }
+            else if (ratio < minUpRatio)
+            {
+                log.warn("市场环境过滤：上涨家数占比 {}% < {}%，今日不生成日推荐",
+                        String.format("%.1f", ratio * 100), String.format("%.0f%%", minUpRatio * 100));
+                return;
+            }
+            else
+            {
+                log.info("市场环境：上涨家数占比 {}%（阈值 {}%），通过",
+                        String.format("%.1f", ratio * 100), String.format("%.0f", minUpRatio * 100));
+            }
+        }
+
         // 1. 查找趋势积累分组
         StockGroup group = findGroupByName(targetGroupName);
         if (group == null)
@@ -250,7 +317,10 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
     }
 
     /**
-     * 遍历当日涨停记录，过滤首板/二板，生成一个分组
+     * 遍历当日涨停记录，过滤首板/二板，按封板时间取前 limitUpTopN 只生成分组。
+     *
+     * 封板时间（stock_limit_up_record.time，如 "2026-10-30 09:35:00"）越早说明买盘越强，
+     * 同一只票跨板块出现时取最早封板时间。
      */
     private void generateLimitUpGroup(LocalDate endDate)
     {
@@ -261,8 +331,7 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
             return;
         }
 
-        Set<String> codes = new LinkedHashSet<>();
-        int first = 0, second = 0;
+        Map<String, LimitUpPick> pickMap = new LinkedHashMap<>();
         List<String> excludePrefixes = parseExcludePrefixes();
         for (StockLimitUpRecord r : records)
         {
@@ -281,24 +350,40 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
                 continue;
             }
             int board = boardOf(r.getUpNum());
-            if (board == 1)
+            if (board != 1 && board != 2)
             {
-                first++;
-                codes.add(r.getSecuCode());
+                continue;
             }
-            else if (board == 2)
+            String sealTime = sealTimeOf(r.getTime());
+            LimitUpPick exist = pickMap.get(r.getSecuCode());
+            if (exist == null)
             {
-                second++;
-                codes.add(r.getSecuCode());
+                LimitUpPick pick = new LimitUpPick();
+                pick.code = r.getSecuCode();
+                pick.sealTime = sealTime;
+                pick.board = board;
+                pickMap.put(r.getSecuCode(), pick);
+            }
+            else if (sealTime.compareTo(exist.sealTime) < 0)
+            {
+                exist.sealTime = sealTime;
             }
         }
-        log.info("当日涨停 {} 条，首板 {} 只，二板 {} 只，去重后共 {} 只",
-                records.size(), first, second, codes.size());
+        int first = (int) pickMap.values().stream().filter(p -> p.board == 1).count();
+        int second = (int) pickMap.values().stream().filter(p -> p.board == 2).count();
+        log.info("当日涨停 {} 条，去重后首板 {} 只、二板 {} 只", records.size(), first, second);
 
-        if (codes.isEmpty())
+        List<LimitUpPick> picks = new ArrayList<>(pickMap.values());
+        if (picks.isEmpty())
         {
             log.warn("无首板/二板股票，跳过涨停首二板分组");
             return;
+        }
+        picks.sort(Comparator.comparing(p -> p.sealTime));
+        int hitCount = picks.size();
+        if (limitUpTopN > 0 && picks.size() > limitUpTopN)
+        {
+            picks = new ArrayList<>(picks.subList(0, limitUpTopN));
         }
 
         String dailyGroupName = limitUpGroupName + "_" + endDate;
@@ -309,19 +394,42 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
             return;
         }
 
+        String[] codes = picks.stream().map(p -> p.code).toArray(String[]::new);
         StockGroup group = new StockGroup();
         group.setGroupName(dailyGroupName);
-        group.setStockCodes(codes.toArray(new String[0]));
+        group.setStockCodes(codes);
         group.setCreateBy("system");
-        group.setRemark(String.format("%s（截止%s，当日涨停首板/二板股票，首板%d只/二板%d只，去重后%d只）",
-                dailyGroupName, endDate, first, second, codes.size()));
+        group.setRemark(String.format("%s（截止%s，当日涨停首板/二板，首板%d只/二板%d只，按封板时间取前%d只；封板越早越强）",
+                dailyGroupName, endDate, first, second, picks.size()));
         stockGroupService.insertGroup(group);
 
-        log.info("生成分组 [{}]，命中 {} 只", dailyGroupName, codes.size());
-        for (String code : codes)
+        log.info("生成分组 [{}]，命中 {} 只，按封板时间取前 {} 只", dailyGroupName, hitCount, picks.size());
+        int rank = 1;
+        for (LimitUpPick p : picks)
         {
-            log.info("    {}", code);
+            log.info("    {}. {} 封板{} {}板", rank++, p.code, p.sealTime, p.board);
         }
+    }
+
+    /**
+     * 从涨停时间（形如 "2026-10-30 09:35:00"）解析出 HH:mm，缺失返回 99:99 以便排在最后
+     */
+    private String sealTimeOf(String time)
+    {
+        if (time == null)
+        {
+            return "99:99";
+        }
+        String t = time.trim();
+        if (t.length() >= 16 && t.charAt(10) == ' ')
+        {
+            return t.substring(11, 16);
+        }
+        if (t.length() >= 5 && t.charAt(2) == ':')
+        {
+            return t.substring(0, 5);
+        }
+        return "99:99";
     }
 
     /**
@@ -458,7 +566,61 @@ public class StockDayTradingServiceImpl implements IStockDayTradingService
         {
             return true;
         }
-        return stock.getTurnoverRate() != null && stock.getTurnoverRate().doubleValue() < minTurnoverRate;
+        if (stock.getTurnoverRate() == null)
+        {
+            return false;
+        }
+        return stock.getTurnoverRate().doubleValue() < turnoverThreshold(stock);
+    }
+
+    /**
+     * 换手率门槛按流通市值分档：小盘要求更高（否则买不进卖不出），大盘可以更低（盘子大、换手天然低）
+     */
+    private double turnoverThreshold(Stock stock)
+    {
+        BigDecimal cap = stock.getCircMarketCap();
+        if (cap == null || cap.doubleValue() <= 0)
+        {
+            return minTurnoverRate;
+        }
+        double capYi = cap.doubleValue() / 100000000.0;
+        if (capYi < smallCapYi)
+        {
+            return smallCapTurnoverRate;
+        }
+        if (capYi > largeCapYi)
+        {
+            return largeCapTurnoverRate;
+        }
+        return minTurnoverRate;
+    }
+
+    /**
+     * 当日上涨家数占比（0~1），无行情快照返回 -1
+     */
+    private double marketUpRatio(LocalDate endDate)
+    {
+        List<StockDailyQuote> quotes = stockDailyQuoteMapper.selectByTradeDates(
+                Collections.singletonList(Date.valueOf(endDate)));
+        if (quotes == null || quotes.isEmpty())
+        {
+            return -1;
+        }
+        int total = 0;
+        int up = 0;
+        for (StockDailyQuote q : quotes)
+        {
+            if (q.getChangeRate() == null)
+            {
+                continue;
+            }
+            total++;
+            if (q.getChangeRate().doubleValue() > 0)
+            {
+                up++;
+            }
+        }
+        return total == 0 ? -1 : (double) up / total;
     }
 
     /**

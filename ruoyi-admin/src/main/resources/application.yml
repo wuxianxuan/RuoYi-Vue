@@ -236,10 +236,22 @@ stock:
     exclude-code-prefixes: 300,301,688,689
   # 趋势积累池日推荐配置
   day-trading:
-    # 日推荐流动性过滤：换手率下限(%)
+    # 日推荐流动性过滤：换手率下限(%)，按流通市值分档
     min-turnover-rate: 3.0
+    # 小盘（流通市值 < 50 亿）换手率门槛：要求更高
+    small-cap-turnover-rate: 5.0
+    # 大盘（流通市值 > 200 亿）换手率门槛：盘子大、换手天然低
+    large-cap-turnover-rate: 1.5
+    # 小盘/大盘市值分界（亿元）
+    small-cap-yi: 50
+    large-cap-yi: 200
     # 每组最多输出数量（按评分取前N，<=0 表示不限）
     top-n: 15
+    # 市场环境过滤：上涨家数占比低于阈值时当天不生成日推荐（0~1）
+    market-filter-enabled: true
+    min-up-ratio: 0.30
+    # 首二板最多输出数量（按封板时间取前N，<=0 表示不限）
+    limit-up-top-n: 15
     # 涨停首二板分组名（固定名，不含日期）
     limit-up-group-name: 涨停首二板
   # 尾盘推荐配置（每个交易日 14:45 运行）

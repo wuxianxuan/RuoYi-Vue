@@ -102,6 +102,10 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
     @Value("${stock.rising-trend.reentry-cooldown-days:10}")
     private int reentryCooldownDays;
 
+    /** 时间止损：连续多少个交易日不创新高就移出池（<=0 表示不启用） */
+    @Value("${stock.rising-trend.max-days-without-high:30}")
+    private int maxDaysWithoutHigh;
+
     /** 是否排除 ST/*ST 股票 */
     @Value("${stock.rising-trend.exclude-st:true}")
     private boolean excludeSt;
@@ -124,8 +128,8 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
         LocalDate endDate = parseDate(date);
         LocalDate startDate = endDate.minusDays(lookbackDays);
         log.info("========== 趋势上涨选股开始 ==========");
-        log.info("参数：endDate={} startDate={} lookbackDays={} entryWindow={} minGain={} maPeriod={} atrPeriod={} shakeAtr={} deleteAtr={} reentryCooldownDays={} excludeSt={} markets={} excludeCodePrefixes={}",
-                endDate, startDate, lookbackDays, entryWindow, minGain, maPeriod, atrPeriod, shakeAtr, deleteAtr, reentryCooldownDays, excludeSt, markets, excludeCodePrefixes);
+        log.info("参数：endDate={} startDate={} lookbackDays={} entryWindow={} minGain={} maPeriod={} atrPeriod={} shakeAtr={} deleteAtr={} reentryCooldownDays={} maxDaysWithoutHigh={} excludeSt={} markets={} excludeCodePrefixes={}",
+                endDate, startDate, lookbackDays, entryWindow, minGain, maPeriod, atrPeriod, shakeAtr, deleteAtr, reentryCooldownDays, maxDaysWithoutHigh, excludeSt, markets, excludeCodePrefixes);
 
         // 1. 查询候选股票基础信息
         List<Stock> stocks = stockMapper.selectStocksByMarkets(parseMarkets());
@@ -259,7 +263,7 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
             boolean hasLimitUp = false;
             for (int i = loIdx; i <= di; i++)
             {
-                if (i > 0 && c[i - 1] > 0 && (c[i] - c[i - 1]) / c[i - 1] * 100 >= limitUpThreshold)
+                if (i > 0 && isLimitUp(c[i - 1], c[i], h[i]))
                 {
                     hasLimitUp = true;
                     break;
@@ -305,9 +309,9 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
             }
             else
             {
-                if (cur >= st.highPrice)
+                if (cur > st.highPrice)
                 {
-                    // 创新高
+                    // 创新高（必须严格超过阶段高点；收盘持平不算新高，否则时间止损永远不触发）
                     if ("回调".equals(st.status))
                     {
                         // 把回调谷记为新的阶段低点（低点抬高）
@@ -330,6 +334,13 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
                 }
                 else
                 {
+                    // 时间止损：连续 N 日不创新高视为僵尸票，移出池（避免长期占着震荡名额）
+                    if (maxDaysWithoutHigh > 0 && di - st.highIdx >= maxDaysWithoutHigh)
+                    {
+                        st.inPool = false;
+                        st.lastDeleteIdx = di;
+                        continue;
+                    }
                     // 未创新高，按 ATR 归一化回撤判定
                     double atrVal = atr(h, l, c, di);
                     double pullback = atrVal > 0 ? (st.highPrice - cur) / atrVal : 0;
@@ -382,6 +393,24 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
             cnt++;
         }
         return cnt > 0 ? sum / cnt : 0;
+    }
+
+    /**
+     * 是否涨停：主板按「前收 × 1.1 四舍五入到分」算涨停价，最高价触及即算；
+     * 另用涨幅阈值兜底，兼容复权价格导致的比例偏差。
+     */
+    private boolean isLimitUp(double prevClose, double close, double high)
+    {
+        if (prevClose <= 0)
+        {
+            return false;
+        }
+        double limitPrice = Math.round(prevClose * 1.1 * 100.0) / 100.0;
+        if (high >= limitPrice - 0.005)
+        {
+            return true;
+        }
+        return (close - prevClose) / prevClose * 100 >= limitUpThreshold;
     }
 
     /**
@@ -462,8 +491,9 @@ public class StockRisingTrendServiceImpl implements IStockRisingTrendService
      */
     private String buildRemark(LocalDate endDate, int total, int up, int shake, int cb)
     {
-        return String.format("%s（截止%s，进池=近%d日涨≥%.0f%%且创%d日新高且收盘>MA%d，波段=震荡≤%.0fATR/删除>%.0fATR，删除后冷却%d日，止损=阶段低点与%.0fATR取高；当前%d只：上升%d/震荡%d/回调%d）",
-                groupName, endDate, entryWindow, minGain, entryWindow, maPeriod, shakeAtr, deleteAtr, reentryCooldownDays, deleteAtr, total, up, shake, cb);
+        return String.format("%s（截止%s，进池=近%d日涨≥%.0f%%且创%d日新高且收盘>MA%d，波段=震荡≤%.0fATR/删除>%.0fATR，删除后冷却%d日，%d日不创新高移出，止损=阶段低点与%.0fATR取高；当前%d只：上升%d/震荡%d/回调%d）",
+                groupName, endDate, entryWindow, minGain, entryWindow, maPeriod, shakeAtr, deleteAtr, reentryCooldownDays,
+                maxDaysWithoutHigh, deleteAtr, total, up, shake, cb);
     }
 
     /**
