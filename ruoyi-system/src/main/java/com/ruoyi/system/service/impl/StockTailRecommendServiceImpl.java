@@ -1,22 +1,21 @@
 package com.ruoyi.system.service.impl;
 
 import com.ruoyi.system.datasource.TencentKlineDataSource;
+import com.ruoyi.system.domain.stock.Stock;
 import com.ruoyi.system.domain.stock.StockDailyQuote;
 import com.ruoyi.system.domain.stock.StockGroup;
 import com.ruoyi.system.domain.stock.StockKline;
-import com.ruoyi.system.domain.stock.StockLimitUpRecord;
-import com.ruoyi.system.domain.stock.StockRisingState;
+import com.ruoyi.system.domain.stock.StockRecommendPool;
 import com.ruoyi.system.domain.stock.StockTailRecommendRecord;
 import com.ruoyi.system.domain.stock.StockTailRecommendRun;
 import com.ruoyi.system.mapper.StockDailyQuoteMapper;
 import com.ruoyi.system.mapper.StockKlineMapper;
-import com.ruoyi.system.mapper.StockLimitUpRecordMapper;
 import com.ruoyi.system.mapper.StockMapper;
-import com.ruoyi.system.mapper.StockRisingStateMapper;
 import com.ruoyi.system.mapper.StockTailRecommendRecordMapper;
 import com.ruoyi.system.mapper.StockTailRecommendRunMapper;
 import com.ruoyi.system.service.IMailNotifyService;
 import com.ruoyi.system.service.IStockGroupService;
+import com.ruoyi.system.service.IStockRecommendPoolService;
 import com.ruoyi.system.service.IStockTailRecommendService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,8 +41,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -79,21 +76,17 @@ public class StockTailRecommendServiceImpl implements IStockTailRecommendService
 {
     private static final Logger log = LoggerFactory.getLogger(StockTailRecommendServiceImpl.class);
 
-    private static final Pattern BOARD_PATTERN = Pattern.compile("(\\d+)板$");
-
     private static final double YI = 100000000d;
+
+    private static final String SOURCE_TREND = "TREND";
+    private static final String SOURCE_LIMIT_UP = "LIMIT_UP";
+    private static final String SOURCE_LOCKUP_GUIDED = "LOCKUP_GUIDED";
 
     @Autowired
     private TencentKlineDataSource tencentKlineDataSource;
 
     @Autowired
     private StockKlineMapper stockKlineMapper;
-
-    @Autowired
-    private StockRisingStateMapper stockRisingStateMapper;
-
-    @Autowired
-    private StockLimitUpRecordMapper stockLimitUpRecordMapper;
 
     @Autowired
     private StockDailyQuoteMapper stockDailyQuoteMapper;
@@ -185,25 +178,27 @@ public class StockTailRecommendServiceImpl implements IStockTailRecommendService
     @Value("${stock.tail-recommend.ideal-gain:2.5}")
     private double idealGain;
 
-    /** 每日最多推荐数量（按综合评分取前N，<=0 表示不限） */
-    @Value("${stock.tail-recommend.top-n:10}")
-    private int topN;
+    /** 趋势来源最终推荐名额 */
+    @Value("${stock.tail-recommend.trend-quota:5}")
+    private int trendQuota;
 
-    /** 是否把「昨日涨停首二板」纳入候选（该路径波动大，想更稳可关掉） */
-    @Value("${stock.tail-recommend.include-limit-up:true}")
-    private boolean includeLimitUp;
+    /** 涨停首二板来源最终推荐名额 */
+    @Value("${stock.tail-recommend.limit-up-quota:5}")
+    private int limitUpQuota;
+
+    /** 解禁引导来源最终推荐名额（实验性，给 2 个名额蹭一波） */
+    @Value("${stock.tail-recommend.lockup-quota:2}")
+    private int lockupQuota;
+
+    @Autowired
+    private IStockRecommendPoolService stockRecommendPoolService;
+
+    @Autowired
+    private LimitUpPullbackAnalyzer limitUpPullbackAnalyzer;
 
     /** 并行抓取分时K线的线程数 */
     @Value("${stock.tail-recommend.thread-pool-size:16}")
     private int threadPoolSize;
-
-    /** 是否排除 ST/*ST 股票 */
-    @Value("${stock.rising-trend.exclude-st:true}")
-    private boolean excludeSt;
-
-    /** 排除的板块代码前缀 */
-    @Value("${stock.rising-trend.exclude-code-prefixes:300,301,688,689}")
-    private String excludeCodePrefixes;
 
     /** 尾盘30分钟对应的5分钟bar数量（默认6根） */
     @Value("${stock.tail-recommend.tail-bars:6}")
@@ -214,10 +209,10 @@ public class StockTailRecommendServiceImpl implements IStockTailRecommendService
     {
         LocalDate endDate = parseDate(date);
         log.info("========== 尾盘推荐开始 ==========");
-        log.info("参数：endDate={} minuteType={} 涨幅=[{},{}%) 高开<={} 收盘位>={} 尾盘>={} 量比=[{},{}] 换手=[{},{}]% 5日涨幅<={}% 乖离<={}% 成交额>={}亿 取前{}只",
+        log.info("参数：endDate={} minuteType={} 涨幅=[{},{}%) 高开<={} 收盘位>={} 尾盘>={} 量比=[{},{}] 换手=[{},{}]% 5日涨幅<={}% 乖离<={}% 成交额>={}亿 名额=趋势{}+涨停{}只",
                 endDate, minuteType, minGain, maxCloseGain, maxOpenGain, minClosePos, minTailChange,
                 minVolumeRatio, maxVolumeRatio, minTurnoverRate, maxTurnoverRate,
-                maxGain5d, maxBiasMa5, minTurnoverAmount, topN);
+                maxGain5d, maxBiasMa5, minTurnoverAmount, trendQuota, limitUpQuota);
 
         // 0. 幂等：当日分组已存在则整轮跳过，避免重复抓取行情、重复发邮件
         String dailyGroupName = groupName + "_" + endDate;
@@ -242,57 +237,82 @@ public class StockTailRecommendServiceImpl implements IStockTailRecommendService
             log.warn("基准日 [{}] 与执行日相隔 {} 天（长假或日K同步缺失），涨幅口径可能失真，请留意", prevDate, gapDays);
         }
 
-        // 1.1 校验候选池新鲜度：stock_rising_state 由 stockRisingTrendTask 在上一交易日收盘后全量覆盖，
-        //     若最后更新时间早于基准日，说明池子没刷新，直接报错而不是静默用旧池子推荐
-        LocalDate stateDate = loadRisingStateDate();
-        if (stateDate == null)
+        // 1.1 读取推荐池（119 盘后生成）：优先今日，缺失时回退最近一个池并校验新鲜度
+        List<StockRecommendPool> poolRows = stockRecommendPoolService.selectByTargetDate(endDate);
+        if (poolRows == null || poolRows.isEmpty())
         {
-            log.warn("波段状态表为空，本次候选仅来自涨停首二板；请确认 stockRisingTrendTask 是否执行过");
-        }
-        else if (stateDate.isBefore(prevDate))
-        {
-            String msg = String.format("波段状态表最后更新于 %s，早于基准日 %s，候选池未刷新；请先执行 stockRisingTrendTask",
-                    stateDate, prevDate);
-            log.error(msg);
-            throw new IllegalStateException(msg);
+            LocalDate latest = stockRecommendPoolService.latestTargetDate(endDate);
+            if (latest == null)
+            {
+                String msg = "推荐池为空，请先执行 stockRecommendPoolTask 生成次日推荐池";
+                log.error(msg);
+                throw new IllegalStateException(msg);
+            }
+            long gap = ChronoUnit.DAYS.between(latest, endDate);
+            if (gap > 4)
+            {
+                String msg = String.format("最近推荐池生成于 %s，距执行日 %s 已 %d 天，池子过旧；请先执行 stockRecommendPoolTask",
+                        latest, endDate, gap);
+                log.error(msg);
+                throw new IllegalStateException(msg);
+            }
+            log.warn("今日推荐池为空，回退使用最近推荐池 {}（相隔 {} 天）", latest, gap);
+            poolRows = stockRecommendPoolService.selectByTargetDate(latest);
         }
 
-        // 2. 收集候选股票（昨日上升/震荡 + 昨日涨停首二板）
-        Map<String, String> candidateMap = new LinkedHashMap<>();
-        collectRisingShake(candidateMap);
-        if (includeLimitUp)
+        // 2. 候选去重：涨停 > 解禁引导 > 趋势
+        Map<String, StockRecommendPool> candidateMap = new LinkedHashMap<>();
+        for (StockRecommendPool row : poolRows)
         {
-            collectLimitUp(candidateMap, prevDate);
-        }
-        else
-        {
-            log.info("已配置不纳入涨停首二板候选");
+            if (row.getStockCode() == null || row.getStockCode().isEmpty())
+            {
+                continue;
+            }
+            StockRecommendPool exist = candidateMap.get(row.getStockCode());
+            if (exist == null || sourcePriority(row.getSource()) > sourcePriority(exist.getSource()))
+            {
+                candidateMap.put(row.getStockCode(), row);
+            }
         }
         if (candidateMap.isEmpty())
         {
-            log.warn("无候选股票，跳过");
+            log.warn("推荐池无有效候选，跳过");
             return;
         }
         List<String> codes = new ArrayList<>(candidateMap.keySet());
-        log.info("候选股票 {} 只", codes.size());
+        long trendCandidates = candidateMap.values().stream()
+                .filter(r -> SOURCE_TREND.equals(r.getSource())).count();
+        long limitUpCandidates = candidateMap.values().stream()
+                .filter(r -> SOURCE_LIMIT_UP.equals(r.getSource())).count();
+        long guidedCandidates = candidateMap.values().stream()
+                .filter(r -> SOURCE_LOCKUP_GUIDED.equals(r.getSource())).count();
+        log.info("推荐池候选 {} 只（趋势 {} / 涨停 {} / 解禁引导 {}）",
+                codes.size(), trendCandidates, limitUpCandidates, guidedCandidates);
 
-        // 3. 预加载昨收、当日快照（量比/换手）、历史日K（5日涨幅/MA5）
+        // 3. 预加载昨收、当日快照、历史日K；涨停来源额外加载涨停日日K与股票快照
         Map<String, Double> prevCloseMap = loadPrevClose(codes, prevDate);
         Map<String, StockDailyQuote> quoteMap = loadQuote(endDate);
         Map<String, DailyStat> dailyStatMap = loadDailyStats(codes, prevDate);
-        log.info("预加载：昨收 {} 只，当日快照 {} 条，历史日K {} 只", prevCloseMap.size(), quoteMap.size(), dailyStatMap.size());
+        List<String> limitUpCodes = candidateMap.values().stream()
+                .filter(r -> SOURCE_LIMIT_UP.equals(r.getSource()))
+                .map(StockRecommendPool::getStockCode)
+                .collect(Collectors.toList());
+        Map<String, StockKline> limitUpDayBars = loadLimitUpDayBars(limitUpCodes, prevDate);
+        Map<String, Stock> stockMap = loadStocks();
+        log.info("预加载：昨收 {} 只，当日快照 {} 条，历史日K {} 只，涨停日K {} 只",
+                prevCloseMap.size(), quoteMap.size(), dailyStatMap.size(), limitUpDayBars.size());
 
-        // 4. 并行抓取当日分时K线并计算指标
+        // 4. 并行抓取当日分时K线：趋势走尾盘规则，涨停首二板走回调承接规则
         Map<String, AtomicInteger> rejects = new ConcurrentHashMap<>();
         List<Result> results = new ArrayList<>();
         ExecutorService pool = Executors.newFixedThreadPool(threadPoolSize);
         List<Future<Result>> futures = new ArrayList<>();
         try
         {
-            for (String code : codes)
+            for (StockRecommendPool candidate : candidateMap.values())
             {
-                futures.add(pool.submit(() -> analyze(code, endDate, prevCloseMap.get(code),
-                        quoteMap.get(code), dailyStatMap.get(code), rejects)));
+                futures.add(pool.submit(() -> analyzeCandidate(candidate, endDate, prevDate,
+                        prevCloseMap, quoteMap, dailyStatMap, limitUpDayBars, stockMap, rejects)));
             }
         }
         finally
@@ -317,20 +337,30 @@ public class StockTailRecommendServiceImpl implements IStockTailRecommendService
         }
         log.info("分析完成：有可用分时数据的候选 {} 只", results.size());
 
-        // 5. 分层：通过全部过滤的按综合评分降序取前 topN；被挡的也保留，用于事后对比
-        List<Result> passed = results.stream()
-                .filter(r -> r.rejectReason == null)
+        // 5. 按来源分别排序、各取固定名额（不跨来源补位，保证来源对比干净）
+        List<Result> trendPassed = results.stream()
+                .filter(r -> r.rejectReason == null && SOURCE_TREND.equals(r.source))
                 .sorted(Comparator.comparingDouble((Result r) -> r.score).reversed())
                 .collect(Collectors.toList());
+        List<Result> limitUpPassed = results.stream()
+                .filter(r -> r.rejectReason == null && SOURCE_LIMIT_UP.equals(r.source))
+                .sorted(Comparator.comparingDouble((Result r) -> r.score).reversed())
+                .collect(Collectors.toList());
+        List<Result> guidedPassed = results.stream()
+                .filter(r -> r.rejectReason == null && SOURCE_LOCKUP_GUIDED.equals(r.source))
+                .sorted(Comparator.comparingDouble((Result r) -> r.score).reversed())
+                .collect(Collectors.toList());
+        List<Result> picked = new ArrayList<>();
+        picked.addAll(takeQuota(trendPassed, trendQuota));
+        picked.addAll(takeQuota(limitUpPassed, limitUpQuota));
+        picked.addAll(takeQuota(guidedPassed, lockupQuota));
         String funnel = formatRejects(rejects);
         log.info("过滤分布：{}", funnel);
-        int hitCount = passed.size();
-        List<Result> picked = passed;
-        if (topN > 0 && passed.size() > topN)
-        {
-            picked = new ArrayList<>(passed.subList(0, topN));
-            log.info("命中 {} 只，按综合评分取前 {} 只推荐", hitCount, topN);
-        }
+        int hitCount = trendPassed.size() + limitUpPassed.size() + guidedPassed.size();
+        log.info("命中：趋势 {} 只（取 {}）/ 涨停 {} 只（取 {}）/ 解禁引导 {} 只（取 {}），最终推荐 {} 只",
+                trendPassed.size(), Math.min(trendQuota, trendPassed.size()),
+                limitUpPassed.size(), Math.min(limitUpQuota, limitUpPassed.size()),
+                guidedPassed.size(), Math.min(lockupQuota, guidedPassed.size()), picked.size());
 
         // 6. 全量落库（推荐 + 被挡），供"推荐组 vs 被挡组"对比；
         //    先落库再建分组，分组建失败时重跑会走 upsert，不丢实验数据
@@ -355,6 +385,123 @@ public class StockTailRecommendServiceImpl implements IStockTailRecommendService
     }
 
     /**
+     * 按候选来源分发分析规则
+     */
+    private Result analyzeCandidate(StockRecommendPool candidate, LocalDate endDate, LocalDate prevDate,
+                                    Map<String, Double> prevCloseMap,
+                                    Map<String, StockDailyQuote> quoteMap,
+                                    Map<String, DailyStat> dailyStatMap,
+                                    Map<String, StockKline> limitUpDayBars,
+                                    Map<String, Stock> stockMap,
+                                    Map<String, AtomicInteger> rejects)
+    {
+        String code = candidate.getStockCode();
+        if (SOURCE_LIMIT_UP.equals(candidate.getSource()))
+        {
+            LimitUpPullbackAnalyzer.PullbackResult pr = limitUpPullbackAnalyzer.analyze(
+                    code, endDate, limitUpDayBars.get(code), stockMap.get(code), rejects);
+            if (pr == null)
+            {
+                return null;
+            }
+            Result r = new Result();
+            r.code = pr.code;
+            r.source = SOURCE_LIMIT_UP;
+            r.price = pr.price;
+            r.openPct = 0;
+            r.closePct = pr.pullback;
+            r.closePos = pr.closePos;
+            r.tailChange = pr.tailChange;
+            r.turnoverRate = pr.turnover;
+            r.gain5d = null;
+            r.biasMa5 = null;
+            r.volumeRatio = null;
+            r.amount = 0;
+            r.score = pr.score;
+            r.rejectReason = null;
+            return r;
+        }
+
+        Result r = analyze(code, endDate, prevCloseMap.get(code), quoteMap.get(code),
+                dailyStatMap.get(code), rejects);
+        if (r != null)
+        {
+            // TREND / LOCKUP_GUIDED 都走尾盘强度规则，保留来源标签
+            r.source = candidate.getSource();
+        }
+        return r;
+    }
+
+    private int sourcePriority(String source)
+    {
+        if (SOURCE_LIMIT_UP.equals(source))
+        {
+            return 3;
+        }
+        if (SOURCE_LOCKUP_GUIDED.equals(source))
+        {
+            return 2;
+        }
+        if (SOURCE_TREND.equals(source))
+        {
+            return 1;
+        }
+        return 0;
+    }
+
+    private List<Result> takeQuota(List<Result> list, int quota)
+    {
+        if (list == null || list.isEmpty() || quota <= 0)
+        {
+            return new ArrayList<>();
+        }
+        if (list.size() <= quota)
+        {
+            return list;
+        }
+        return new ArrayList<>(list.subList(0, quota));
+    }
+
+    private Map<String, StockKline> loadLimitUpDayBars(List<String> codes, LocalDate prevDate)
+    {
+        Map<String, StockKline> map = new HashMap<>();
+        if (codes == null || codes.isEmpty())
+        {
+            return map;
+        }
+        List<StockKline> klines = stockKlineMapper.selectKlineByCodesAndDays(
+                codes, "D", prevDate.toString(), prevDate.toString());
+        if (klines != null)
+        {
+            for (StockKline kline : klines)
+            {
+                if (kline.getStockCode() != null)
+                {
+                    map.put(kline.getStockCode(), kline);
+                }
+            }
+        }
+        return map;
+    }
+
+    private Map<String, Stock> loadStocks()
+    {
+        Map<String, Stock> map = new HashMap<>();
+        List<Stock> stocks = stockMapper.selectStocksByMarkets(Arrays.asList("SH", "SZ"));
+        if (stocks != null)
+        {
+            for (Stock stock : stocks)
+            {
+                if (stock.getStockCode() != null)
+                {
+                    map.put(stock.getStockCode(), stock);
+                }
+            }
+        }
+        return map;
+    }
+
+    /**
      * 把推荐结果整理成邮件正文推送到手机
      */
     private void notifyByEmail(List<Result> results, Map<String, String> nameMap, LocalDate endDate)
@@ -366,6 +513,7 @@ public class StockTailRecommendServiceImpl implements IStockTailRecommendService
         for (Result r : results)
         {
             sb.append(i++).append(". ")
+                    .append(r.sourceLabel()).append(" ")
                     .append(nameMap.getOrDefault(r.code, "")).append("（").append(r.code).append("）\n");
         }
         sb.append("\n");
@@ -375,6 +523,7 @@ public class StockTailRecommendServiceImpl implements IStockTailRecommendService
         for (Result r : results)
         {
             sb.append(i++).append(". ")
+                    .append(r.sourceLabel()).append(" ")
                     .append(nameMap.getOrDefault(r.code, "")).append("(").append(r.code).append(")")
                     .append("  涨").append(String.format("%.2f", r.closePct)).append("%")
                     .append("  5日").append(r.gain5d == null ? "-" : String.format("%+.2f", r.gain5d)).append("%")
@@ -436,6 +585,7 @@ public class StockTailRecommendServiceImpl implements IStockTailRecommendService
             rec.setRuleVersion(ruleVersion);
             rec.setStockCode(r.code);
             rec.setStockName(nameMap.get(r.code));
+            rec.setSource(r.source);
             rec.setPicked(rank != null);
             rec.setRankNo(rank);
             rec.setRejectReason(r.rejectReason);
@@ -470,57 +620,6 @@ public class StockTailRecommendServiceImpl implements IStockTailRecommendService
         run.setPickedCount(pickedCount);
         run.setRejectSummary(funnel != null && funnel.length() > 1000 ? funnel.substring(0, 1000) : funnel);
         recommendRunMapper.insertRun(run);
-    }
-
-    private void collectRisingShake(Map<String, String> candidateMap)
-    {
-        List<StockRisingState> states = stockRisingStateMapper.selectAll();
-        if (states == null)
-        {
-            return;
-        }
-        for (StockRisingState st : states)
-        {
-            if (st.getStockCode() == null || st.getStatus() == null)
-            {
-                continue;
-            }
-            if ("上升".equals(st.getStatus()) || "震荡".equals(st.getStatus()))
-            {
-                candidateMap.putIfAbsent(st.getStockCode(), st.getStatus());
-            }
-        }
-    }
-
-    private void collectLimitUp(Map<String, String> candidateMap, LocalDate prevDate)
-    {
-        List<String> excludePrefixes = parseExcludePrefixes();
-        List<StockLimitUpRecord> records = stockLimitUpRecordMapper.selectByTradeDate(prevDate.toString());
-        if (records == null)
-        {
-            return;
-        }
-        for (StockLimitUpRecord r : records)
-        {
-            String code = r.getSecuCode();
-            if (code == null || code.isEmpty())
-            {
-                continue;
-            }
-            if (excludeSt && r.getSecuName() != null && r.getSecuName().toUpperCase().contains("ST"))
-            {
-                continue;
-            }
-            if (startsWithAny(code, excludePrefixes))
-            {
-                continue;
-            }
-            int board = boardOf(r.getUpNum());
-            if (board == 1 || board == 2)
-            {
-                candidateMap.putIfAbsent(code, "首二板");
-            }
-        }
     }
 
     /**
@@ -733,22 +832,26 @@ public class StockTailRecommendServiceImpl implements IStockTailRecommendService
     {
         String dailyGroupName = groupName + "_" + endDate;
         String[] codes = picked.stream().map(r -> r.code).toArray(String[]::new);
+        long trendPicked = picked.stream().filter(r -> SOURCE_TREND.equals(r.source)).count();
+        long limitUpPicked = picked.stream().filter(r -> SOURCE_LIMIT_UP.equals(r.source)).count();
+        long guidedPicked = picked.stream().filter(r -> SOURCE_LOCKUP_GUIDED.equals(r.source)).count();
         StockGroup group = new StockGroup();
         group.setGroupName(dailyGroupName);
         group.setStockCodes(codes);
         group.setCreateBy("system");
         group.setRemark(String.format(
-                "基准日%s；涨幅%.1f~%.1f%%+高开≤%.1f%%+成交额≥%.1f亿+5日涨幅≤%.0f%%+乖离≤%.0f%%+换手%.0f~%.0f%%+收盘位≥%.2f+尾盘30m≥%.1f%%；命中%d取前%d（量比/换手缺失时不校验）",
-                prevDate, minGain, maxCloseGain, maxOpenGain, minTurnoverAmount, maxGain5d, maxBiasMa5,
-                minTurnoverRate, maxTurnoverRate, minClosePos, minTailChange, hitCount, picked.size()));
+                "基准日%s；趋势%d只+涨停%d只+解禁引导%d只；趋势规则：涨幅%.1f~%.1f%%+高开≤%.1f%%+成交额≥%.1f亿+5日涨幅≤%.0f%%+乖离≤%.0f%%；涨停规则：回调承接；解禁引导：温和多头+低振幅；命中%d",
+                prevDate, trendPicked, limitUpPicked, guidedPicked, minGain, maxCloseGain, maxOpenGain,
+                minTurnoverAmount, maxGain5d, maxBiasMa5, hitCount));
         stockGroupService.insertGroup(group);
 
-        log.info("生成尾盘推荐分组 [{}]，推荐 {} 只（命中 {} 只）", dailyGroupName, picked.size(), hitCount);
+        log.info("生成尾盘推荐分组 [{}]，推荐 {} 只（趋势 {} / 涨停 {} / 解禁引导 {}，命中 {} 只）",
+                dailyGroupName, picked.size(), trendPicked, limitUpPicked, guidedPicked, hitCount);
         for (Result r : picked)
         {
-            log.info("    {} 涨{}% 5日{}% 乖离{}% 收盘位{} 尾盘{}% 量比{} 换手{}% 评分{}",
-                    r.code, fmt(r.closePct), fmtOrDash(r.gain5d), fmtOrDash(r.biasMa5), fmt(r.closePos),
-                    fmt(r.tailChange), r.volumeRatio == null ? "-" : fmt(r.volumeRatio),
+            log.info("    [{}] {} 涨{}% 5日{}% 乖离{}% 收盘位{} 尾盘{}% 量比{} 换手{}% 评分{}",
+                    r.source, r.code, fmt(r.closePct), fmtOrDash(r.gain5d), fmtOrDash(r.biasMa5),
+                    fmt(r.closePos), fmt(r.tailChange), r.volumeRatio == null ? "-" : fmt(r.volumeRatio),
                     r.turnoverRate == null ? "-" : fmt(r.turnoverRate), fmt(r.score));
         }
     }
@@ -849,68 +952,9 @@ public class StockTailRecommendServiceImpl implements IStockTailRecommendService
         return map;
     }
 
-    /**
-     * 波段状态表最后一次更新的日期（用于校验候选池是否新鲜），无数据返回 null
-     */
-    private LocalDate loadRisingStateDate()
-    {
-        java.util.Date last = stockRisingStateMapper.selectMaxUpdateTime();
-        if (last == null)
-        {
-            return null;
-        }
-        return java.time.Instant.ofEpochMilli(last.getTime())
-                .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
-    }
-
-    private int boardOf(String upNum)
-    {
-        if (upNum == null || upNum.trim().isEmpty())
-        {
-            return 1;
-        }
-        Matcher m = BOARD_PATTERN.matcher(upNum.trim());
-        if (m.find())
-        {
-            try
-            {
-                return Integer.parseInt(m.group(1));
-            }
-            catch (NumberFormatException e)
-            {
-                return 0;
-            }
-        }
-        return 0;
-    }
-
     private String inferMarket(String code)
     {
         return code.startsWith("6") ? "SH" : "SZ";
-    }
-
-    private List<String> parseExcludePrefixes()
-    {
-        if (excludeCodePrefixes == null || excludeCodePrefixes.trim().isEmpty())
-        {
-            return Arrays.asList("300", "301", "688", "689");
-        }
-        return Arrays.stream(excludeCodePrefixes.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toList());
-    }
-
-    private boolean startsWithAny(String code, List<String> prefixes)
-    {
-        for (String prefix : prefixes)
-        {
-            if (code.startsWith(prefix))
-            {
-                return true;
-            }
-        }
-        return false;
     }
 
     private double doubleOf(BigDecimal v)
@@ -982,6 +1026,8 @@ public class StockTailRecommendServiceImpl implements IStockTailRecommendService
     private static class Result
     {
         private String code;
+        /** 来源：TREND / LIMIT_UP */
+        private String source;
         private double price;
         private double openPct;
         private double closePct;
@@ -995,5 +1041,18 @@ public class StockTailRecommendServiceImpl implements IStockTailRecommendService
         private double score;
         /** 淘汰原因：null 表示通过全部过滤 */
         private String rejectReason;
+
+        private String sourceLabel()
+        {
+            if (SOURCE_LIMIT_UP.equals(source))
+            {
+                return "[涨停]";
+            }
+            if (SOURCE_LOCKUP_GUIDED.equals(source))
+            {
+                return "[解禁]";
+            }
+            return "[趋势]";
+        }
     }
 }

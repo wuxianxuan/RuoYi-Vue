@@ -41,6 +41,7 @@ public class StockGroupServiceImpl implements IStockGroupService
         if (stockCodes != null && stockCodes.length > 0)
         {
             stockGroupMapper.insertGroupStocks(stockGroup.getId(), stockCodes);
+            stockGroupMapper.touchGroup(stockGroup.getId());
         }
         return rows;
     }
@@ -85,7 +86,9 @@ public class StockGroupServiceImpl implements IStockGroupService
     {
         if (stockCodes != null && stockCodes.length > 0)
         {
-            return stockGroupMapper.insertGroupStocks(groupId, stockCodes);
+            int rows = stockGroupMapper.insertGroupStocks(groupId, stockCodes);
+            stockGroupMapper.touchGroup(groupId);
+            return rows;
         }
         return 0;
     }
@@ -95,7 +98,9 @@ public class StockGroupServiceImpl implements IStockGroupService
     {
         if (stockCodes != null && stockCodes.length > 0)
         {
-            return stockGroupMapper.insertGroupStocksIgnore(groupId, stockCodes);
+            int rows = stockGroupMapper.insertGroupStocksIgnore(groupId, stockCodes);
+            stockGroupMapper.touchGroup(groupId);
+            return rows;
         }
         return 0;
     }
@@ -105,7 +110,9 @@ public class StockGroupServiceImpl implements IStockGroupService
     {
         if (stockCodes != null && stockCodes.length > 0)
         {
-            return stockGroupMapper.deleteGroupStocks(groupId, stockCodes);
+            int rows = stockGroupMapper.deleteGroupStocks(groupId, stockCodes);
+            stockGroupMapper.touchGroup(groupId);
+            return rows;
         }
         return 0;
     }

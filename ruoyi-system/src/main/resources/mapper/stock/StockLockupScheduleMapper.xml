@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.StockLockupScheduleMapper">
+
+    <resultMap type="StockLockupSchedule" id="StockLockupScheduleResult">
+        <result property="id"            column="id"              />
+        <result property="stockCode"     column="stock_code"      />
+        <result property="stockName"     column="stock_name"      />
+        <result property="freeDate"      column="free_date"       />
+        <result property="freeShares"    column="free_shares"     />
+        <result property="liftMarketCap" column="lift_market_cap" />
+        <result property="freeRatio"     column="free_ratio"      />
+        <result property="totalRatio"    column="total_ratio"     />
+        <result property="sharesType"    column="shares_type"     />
+        <result property="holderNum"     column="holder_num"      />
+        <result property="source"        column="source"          />
+        <result property="createTime"    column="create_time"     />
+        <result property="updateTime"    column="update_time"     />
+    </resultMap>
+
+    <insert id="batchUpsert" parameterType="java.util.List">
+        insert into stock_lockup_schedule (
+            stock_code, stock_name, free_date, free_shares, lift_market_cap,
+            free_ratio, total_ratio, shares_type, holder_num, source,
+            create_time, update_time
+        ) values
+        <foreach collection="list" item="item" separator=",">
+            (#{item.stockCode}, #{item.stockName}, #{item.freeDate}, #{item.freeShares}, #{item.liftMarketCap},
+             #{item.freeRatio}, #{item.totalRatio}, #{item.sharesType}, #{item.holderNum}, #{item.source},
+             sysdate(), sysdate())
+        </foreach>
+        on duplicate key update
+            stock_name = values(stock_name),
+            free_shares = values(free_shares),
+            lift_market_cap = values(lift_market_cap),
+            free_ratio = values(free_ratio),
+            total_ratio = values(total_ratio),
+            holder_num = values(holder_num),
+            source = values(source),
+            update_time = sysdate()
+    </insert>
+
+    <select id="selectByFreeDateRange" resultMap="StockLockupScheduleResult">
+        select id, stock_code, stock_name, free_date, free_shares, lift_market_cap,
+               free_ratio, total_ratio, shares_type, holder_num, source, create_time, update_time
+        from stock_lockup_schedule
+        where free_date &gt;= #{start}
+          and free_date &lt;= #{end}
+        order by free_date asc, stock_code asc
+    </select>
+
+    <select id="selectRiskCodes" resultType="java.lang.String">
+        select distinct stock_code
+        from stock_lockup_schedule
+        where free_date &gt;= #{start}
+          and free_date &lt;= #{end}
+          and free_ratio &gt;= #{minRatio}
+    </select>
+
+    <delete id="deleteBefore">
+        delete from stock_lockup_schedule where free_date &lt; #{date}
+    </delete>
+
+</mapper>

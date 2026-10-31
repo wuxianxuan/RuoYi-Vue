@@ -19,6 +19,11 @@ public interface StockDailyQuoteMapper
     int batchInsertIgnore(List<StockDailyQuote> list);
 
     /**
+     * 批量插入或更新每日行情快照（同一天重跑时覆盖为最新值）
+     */
+    int batchUpsert(List<StockDailyQuote> list);
+
+    /**
      * 查询最近 limit 个交易日期（去重、按日期降序）
      */
     List<Date> selectRecentTradeDates(@Param("limit") int limit);

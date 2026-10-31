@@ -4,13 +4,12 @@ import java.util.List;
 import java.io.IOException;
 
 import com.ruoyi.system.domain.stock.Stock;
+import com.ruoyi.system.domain.stock.StockProfileUpdate;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,9 +24,10 @@ import com.ruoyi.common.core.page.TableDataInfo;
 
 /**
  * 股票基础Controller
- * 
+ *
+ * 股票记录由同步任务维护，页面只读查询 + 受限编辑（备注/所属分组）。
+ *
  * @author ruoyi
- * @date 2026-05-30
  */
 @RestController
 @RequestMapping("/stock/base")
@@ -93,33 +93,18 @@ public class StockController extends BaseController
     }
 
     /**
-     * 新增股票基础
-     */
-    @Log(title = "股票基础", businessType = BusinessType.INSERT)
-    @PostMapping
-    public AjaxResult add(@RequestBody Stock stock)
-    {
-        return toAjax(stockService.insertStock(stock));
-    }
-
-    /**
-     * 修改股票基础
+     * 受限编辑：只允许修改备注和所属分组
      */
     @Log(title = "股票基础", businessType = BusinessType.UPDATE)
-    @PutMapping
-    public AjaxResult edit(@RequestBody Stock stock)
+    @PutMapping("/profile")
+    public AjaxResult updateProfile(@RequestBody StockProfileUpdate body)
     {
-        return toAjax(stockService.updateStock(stock));
-    }
-
-    /**
-     * 删除股票基础
-     */
-    @Log(title = "股票基础", businessType = BusinessType.DELETE)
-    @DeleteMapping("/{ids}")
-    public AjaxResult remove(@PathVariable Long[] ids)
-    {
-        return toAjax(stockService.deleteStockByIds(ids));
+        if (body == null || body.getId() == null)
+        {
+            return AjaxResult.error("股票ID不能为空");
+        }
+        return toAjax(stockService.updateStockProfile(body.getId(), body.getRemark(),
+                body.getGroupIds(), getUsername()));
     }
 
     /**
@@ -139,15 +124,5 @@ public class StockController extends BaseController
     public AjaxResult bindGroups(@PathVariable String stockCode, @RequestBody Long[] groupIds)
     {
         return toAjax(stockService.insertStockGroups(stockCode, groupIds));
-    }
-
-    /**
-     * 股票代码前缀匹配（仅SH/SZ市场，最多10条，按代码升序）
-     */
-    @GetMapping("/autocomplete")
-    public AjaxResult autocomplete(String keyword)
-    {
-        List<Stock> list = stockService.autocompleteStockCode(keyword);
-        return success(list);
     }
 }

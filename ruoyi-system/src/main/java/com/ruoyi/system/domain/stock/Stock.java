@@ -33,17 +33,6 @@ public class Stock extends BaseEntity
     @Excel(name = "市场", sort = 3)
     private String market;
 
-    /** 行业名称（非持久化，联表 stock_plate_stock 填充，取叶子行业名） */
-    @Excel(name = "行业", sort = 4)
-    private String industryName;
-
-    /** 概念名称列表（非持久化，列表展示用） */
-    private List<String> conceptNames;
-
-    /** 概念名称（顿号拼接，用于导出） */
-    @Excel(name = "概念", width = 30, sort = 5)
-    private String conceptNamesStr;
-
     /** 所属分组名称列表（非持久化，联表 stock_group_stock 填充） */
     private List<String> groupNames;
 
@@ -102,24 +91,8 @@ public class Stock extends BaseEntity
     /** 止损价（非持久化，来自 stock_rising_state：阶段低点与 2ATR 回撤位取高者） */
     private BigDecimal stopPrice;
 
-    /** 行业筛选参数（非持久化，支持多选） */
-    private Long[] industryIds;
-
-    /** 概念筛选参数（非持久化，支持多选） */
-    private Long[] conceptIds;
-
     /** 分组筛选参数（非持久化，支持多选） */
     private Long[] groupIds;
-
-    /** 排除分组筛选参数（非持久化，支持多选，用于"分组2较分组1多出股票"等场景） */
-    private Long[] excludeGroupIds;
-
-    /** 涨停数（近30天，含今天，列表展示用，非持久化） */
-    @Excel(name = "涨停数", sort = 7)
-    private Integer limitUpCount;
-
-    /** 涨停数下限筛选参数（非持久化，查询涨停数 >= 该值的数据） */
-    private Integer minLimitUpCount;
 
     /** 最新涨停日期（持久化，由涨停数据采集任务写入） */
     @Excel(name = "最新涨停日期", sort = 8, dateFormat = "yyyy-MM-dd")
@@ -132,12 +105,6 @@ public class Stock extends BaseEntity
     /** 历史最高连板数对应交易日（持久化，与 maxLimitUpBoard 一起写入） */
     @Excel(name = "最高连板日期", sort = 10, dateFormat = "yyyy-MM-dd")
     private Date maxLimitUpBoardDate;
-
-    /** 涨停日期范围筛选参数：起始日期（yyyy-MM-dd，非持久化） */
-    private String limitUpDateStart;
-
-    /** 涨停日期范围筛选参数：结束日期（yyyy-MM-dd，非持久化） */
-    private String limitUpDateEnd;
 
     /** 现价下限筛选参数（非持久化） */
     private BigDecimal minCurrentPrice;
@@ -209,16 +176,6 @@ public class Stock extends BaseEntity
         return market;
     }
 
-    public void setIndustryName(String industryName)
-    {
-        this.industryName = industryName;
-    }
-
-    public String getIndustryName()
-    {
-        return industryName;
-    }
-
     public void setPeRatio(BigDecimal peRatio)
     {
         this.peRatio = peRatio;
@@ -272,26 +229,6 @@ public class Stock extends BaseEntity
     public void setCirculatingShares(BigDecimal circulatingShares) { this.circulatingShares = circulatingShares; }
     public BigDecimal getCirculatingShares() { return circulatingShares; }
 
-    public List<String> getConceptNames()
-    {
-        return conceptNames;
-    }
-
-    public void setConceptNames(List<String> conceptNames)
-    {
-        this.conceptNames = conceptNames;
-    }
-
-    public String getConceptNamesStr()
-    {
-        return conceptNamesStr;
-    }
-
-    public void setConceptNamesStr(String conceptNamesStr)
-    {
-        this.conceptNamesStr = conceptNamesStr;
-    }
-
     public List<String> getGroupNames()
     {
         return groupNames;
@@ -312,26 +249,6 @@ public class Stock extends BaseEntity
         this.groupNamesStr = groupNamesStr;
     }
 
-    public Long[] getIndustryIds()
-    {
-        return industryIds;
-    }
-
-    public void setIndustryIds(Long[] industryIds)
-    {
-        this.industryIds = industryIds;
-    }
-
-    public Long[] getConceptIds()
-    {
-        return conceptIds;
-    }
-
-    public void setConceptIds(Long[] conceptIds)
-    {
-        this.conceptIds = conceptIds;
-    }
-
     public Long[] getGroupIds()
     {
         return groupIds;
@@ -342,36 +259,6 @@ public class Stock extends BaseEntity
         this.groupIds = groupIds;
     }
 
-    public Long[] getExcludeGroupIds()
-    {
-        return excludeGroupIds;
-    }
-
-    public void setExcludeGroupIds(Long[] excludeGroupIds)
-    {
-        this.excludeGroupIds = excludeGroupIds;
-    }
-
-    public Integer getLimitUpCount()
-    {
-        return limitUpCount;
-    }
-
-    public void setLimitUpCount(Integer limitUpCount)
-    {
-        this.limitUpCount = limitUpCount;
-    }
-
-    public Integer getMinLimitUpCount()
-    {
-        return minLimitUpCount;
-    }
-
-    public void setMinLimitUpCount(Integer minLimitUpCount)
-    {
-        this.minLimitUpCount = minLimitUpCount;
-    }
-
     public Date getLastLimitUpDate() { return lastLimitUpDate; }
     public void setLastLimitUpDate(Date lastLimitUpDate) { this.lastLimitUpDate = lastLimitUpDate; }
 
@@ -380,12 +267,6 @@ public class Stock extends BaseEntity
 
     public Date getMaxLimitUpBoardDate() { return maxLimitUpBoardDate; }
     public void setMaxLimitUpBoardDate(Date maxLimitUpBoardDate) { this.maxLimitUpBoardDate = maxLimitUpBoardDate; }
-
-    public String getLimitUpDateStart() { return limitUpDateStart; }
-    public void setLimitUpDateStart(String limitUpDateStart) { this.limitUpDateStart = limitUpDateStart; }
-
-    public String getLimitUpDateEnd() { return limitUpDateEnd; }
-    public void setLimitUpDateEnd(String limitUpDateEnd) { this.limitUpDateEnd = limitUpDateEnd; }
 
     public BigDecimal getMinCurrentPrice() { return minCurrentPrice; }
     public void setMinCurrentPrice(BigDecimal minCurrentPrice) { this.minCurrentPrice = minCurrentPrice; }
@@ -424,7 +305,6 @@ public class Stock extends BaseEntity
                 .append("stockCode", getStockCode())
                 .append("stockName", getStockName())
                 .append("market", getMarket())
-                .append("industryName", getIndustryName())
                 .append("peRatio", getPeRatio())
                 .append("circMarketCap", getCircMarketCap())
                 .append("currentPrice", getCurrentPrice())

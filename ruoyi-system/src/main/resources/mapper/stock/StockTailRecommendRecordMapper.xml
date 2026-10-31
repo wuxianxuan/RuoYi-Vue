@@ -6,13 +6,13 @@
 
     <insert id="insertBatch">
         insert into stock_tail_recommend_record
-            (trade_date, base_date, rule_version, stock_code, stock_name, picked, reject_reason, rank_no,
+            (trade_date, base_date, rule_version, stock_code, stock_name, source, picked, reject_reason, rank_no,
              rec_price, open_pct, close_pct, gain_5d, bias_ma5, close_pos, tail_change,
              volume_ratio, turnover_rate, amount, score, create_time, update_time)
         values
         <foreach collection="list" item="item" separator=",">
             (#{item.tradeDate}, #{item.baseDate}, #{item.ruleVersion}, #{item.stockCode},
-             #{item.stockName,jdbcType=VARCHAR}, #{item.picked}, #{item.rejectReason,jdbcType=VARCHAR},
+             #{item.stockName,jdbcType=VARCHAR}, #{item.source,jdbcType=VARCHAR}, #{item.picked}, #{item.rejectReason,jdbcType=VARCHAR},
              #{item.rankNo,jdbcType=INTEGER},
              #{item.recPrice}, #{item.openPct}, #{item.closePct},
              #{item.gain5d,jdbcType=DECIMAL}, #{item.biasMa5,jdbcType=DECIMAL},
@@ -24,6 +24,7 @@
             base_date = values(base_date),
             rule_version = values(rule_version),
             stock_name = values(stock_name),
+            source = values(source),
             picked = values(picked),
             reject_reason = values(reject_reason),
             rank_no = values(rank_no),
@@ -80,6 +81,7 @@
     <select id="selectEvaluatedRecent" resultType="com.ruoyi.system.domain.stock.StockTailRecommendRecord">
         select trade_date as tradeDate,
                rule_version as ruleVersion,
+               source as source,
                picked as picked,
                rank_no as rankNo,
                close_pct as closePct,

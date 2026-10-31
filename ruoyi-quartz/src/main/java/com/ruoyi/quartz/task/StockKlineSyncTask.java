@@ -4,6 +4,7 @@ import com.ruoyi.system.domain.stock.Stock;
 import com.ruoyi.system.mapper.StockMapper;
 import com.ruoyi.system.service.IStockKlineService;
 import com.ruoyi.system.service.IStockMinuteKlineCollectService;
+import com.ruoyi.system.service.IStockQuoteSyncService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +38,9 @@ public class StockKlineSyncTask
 
     @Autowired
     private IStockMinuteKlineCollectService stockMinuteKlineCollectService;
+
+    @Autowired
+    private IStockQuoteSyncService stockQuoteSyncService;
 
     @Autowired
     @Qualifier("threadPoolTaskExecutor")
@@ -76,6 +80,21 @@ public class StockKlineSyncTask
         String klineType = "D";
 
         log.info("开始同步股票K线数据: 日期范围={} ~ {}, K线类型={}", startDate, endDate, klineType);
+
+        // 步骤 1/3：每日行情快照（腾讯批量接口，覆盖沪/深/北）
+        // 与K线解耦：行情失败不影响日K/分时同步
+        log.info("---------- 步骤 1/3：每日行情快照 ----------");
+        try
+        {
+            stockQuoteSyncService.syncDailyQuote();
+        }
+        catch (Exception e)
+        {
+            log.error("每日行情快照同步失败（不影响后续K线）", e);
+        }
+
+        // 步骤 2/3：日K
+        log.info("---------- 步骤 2/3：日K同步 ----------");
         try
         {
             List<Stock> stocks = stockMapper.selectStocksByMarkets(java.util.Arrays.asList("SH", "SZ"));
@@ -133,7 +152,8 @@ public class StockKlineSyncTask
             log.error("K线同步任务执行异常", e);
         }
 
-        // 日K同步完成后，增量同步分时K线（覆盖最近涨停股 + 趋势上涨池），供后续盘口分析使用
+        // 步骤 3/3：日K同步完成后，增量同步分时K线，供后续盘口分析使用
+        log.info("---------- 步骤 3/3：分时K线同步 ----------");
         try
         {
             stockMinuteKlineCollectService.syncMinuteKline(days);

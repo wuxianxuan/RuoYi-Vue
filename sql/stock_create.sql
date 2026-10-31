@@ -54,7 +54,6 @@ CREATE TABLE `stock_daily_quote` (
 CREATE TABLE `stock_group` (
                                `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键',
                                `group_name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '分组名称',
-                               `sort_order` int DEFAULT '0' COMMENT '排序',
                                `create_by` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT '' COMMENT '创建者',
                                `create_time` datetime DEFAULT NULL COMMENT '创建时间',
                                `update_by` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT '' COMMENT '更新者',
@@ -71,36 +70,6 @@ CREATE TABLE `stock_group_stock` (
                                      `stock_code` varchar(20) NOT NULL COMMENT '股票代码',
                                      PRIMARY KEY (`group_id`,`stock_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='股票分组-股票关联表';
-
-
--- `ry-vue`.stock_indicator 定义
-
-CREATE TABLE `stock_indicator` (
-                                   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键',
-                                   `stock_code` varchar(20) NOT NULL COMMENT '股票代码',
-                                   `kline_type` varchar(5) NOT NULL DEFAULT 'D' COMMENT 'K线类型（D=日 W=周 M=月）',
-                                   `trade_time` date NOT NULL COMMENT '交易日期',
-                                   `ma5` decimal(18,4) DEFAULT NULL COMMENT '5日均线',
-                                   `ma10` decimal(18,4) DEFAULT NULL COMMENT '10日均线',
-                                   `ma20` decimal(18,4) DEFAULT NULL COMMENT '20日均线',
-                                   `ma30` decimal(18,4) DEFAULT NULL COMMENT '30日均线',
-                                   `ma34` decimal(18,4) DEFAULT NULL COMMENT '34日均线',
-                                   `ma60` decimal(18,4) DEFAULT NULL COMMENT '60日均线',
-                                   `macd_dif` decimal(18,4) DEFAULT NULL COMMENT 'MACD DIF',
-                                   `macd_dea` decimal(18,4) DEFAULT NULL COMMENT 'MACD DEA',
-                                   `macd_bar` decimal(18,4) DEFAULT NULL COMMENT 'MACD 柱（BAR）',
-                                   `rsi6` decimal(18,4) DEFAULT NULL COMMENT '6日RSI',
-                                   `rsi14` decimal(18,4) DEFAULT NULL COMMENT '14日RSI',
-                                   `vol_ratio` decimal(18,4) DEFAULT NULL COMMENT '量比（当日成交量 / 5日均量）',
-                                   `trend_slope` decimal(18,4) DEFAULT NULL COMMENT '趋势斜率（线性回归）',
-                                   `kdj_k` decimal(18,4) DEFAULT NULL COMMENT 'KDJ K值',
-                                   `kdj_d` decimal(18,4) DEFAULT NULL COMMENT 'KDJ D值',
-                                   `kdj_j` decimal(18,4) DEFAULT NULL COMMENT 'KDJ J值',
-                                   `cci` decimal(18,4) DEFAULT NULL COMMENT 'CCI(14)',
-                                   PRIMARY KEY (`id`),
-                                   UNIQUE KEY `uk_code_type_time` (`stock_code`,`kline_type`,`trade_time`),
-                                   KEY `idx_stock_code` (`stock_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=278384 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='股票技术指标缓存表';
 
 
 -- `ry-vue`.stock_kline 定义
@@ -152,30 +121,42 @@ CREATE TABLE `stock_limit_up_record` (
 ) ENGINE=InnoDB AUTO_INCREMENT=404643 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='股票涨停记录表';
 
 
--- `ry-vue`.stock_plate 定义
+-- `ry-vue`.stock_lockup_schedule 定义
 
-CREATE TABLE `stock_plate` (
-                               `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键',
-                               `plate_name` varchar(100) NOT NULL COMMENT '板块名称',
-                               `plate_type` varchar(20) NOT NULL COMMENT '板块类型（INDUSTRY 行业 / CONCEPT 概念）',
-                               `plate_code` varchar(20) DEFAULT NULL COMMENT '同花顺板块代码',
-                               `sort_order` int DEFAULT '0' COMMENT '排序',
-                               `focus_flag` tinyint NOT NULL DEFAULT 0 COMMENT '是否需要重点关注(1需要 0不需要)',
-                               `create_by` varchar(64) DEFAULT '' COMMENT '创建者',
-                               `create_time` datetime DEFAULT NULL COMMENT '创建时间',
-                               `update_by` varchar(64) DEFAULT '' COMMENT '更新者',
-                               `update_time` datetime DEFAULT NULL COMMENT '更新时间',
-                               `remark` varchar(500) DEFAULT NULL COMMENT '备注',
-                               PRIMARY KEY (`id`),
-                               UNIQUE KEY `uk_plate_name_type` (`plate_name`,`plate_type`)
-) ENGINE=InnoDB AUTO_INCREMENT=89 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='股票板块/概念字典表';
+CREATE TABLE `stock_lockup_schedule` (
+  `id`              bigint       NOT NULL AUTO_INCREMENT,
+  `stock_code`      varchar(20)  NOT NULL COMMENT '股票代码',
+  `stock_name`      varchar(50)  DEFAULT NULL COMMENT '股票名称',
+  `free_date`       date         NOT NULL COMMENT '解禁日',
+  `free_shares`     decimal(20,4) DEFAULT NULL COMMENT '解禁数量(股)',
+  `lift_market_cap` decimal(20,4) DEFAULT NULL COMMENT '解禁市值(元)',
+  `free_ratio`      decimal(12,8) DEFAULT NULL COMMENT '占流通市值比例(0~1)',
+  `total_ratio`     decimal(12,8) DEFAULT NULL COMMENT '占总市值比例(0~1)',
+  `shares_type`     varchar(100) DEFAULT NULL COMMENT '限售股类型',
+  `holder_num`      int          DEFAULT NULL COMMENT '解禁股东数',
+  `source`          varchar(20)  DEFAULT 'eastmoney' COMMENT '数据来源',
+  `create_time`     datetime     DEFAULT NULL,
+  `update_time`     datetime     DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_code_date_type` (`stock_code`, `free_date`, `shares_type`),
+  KEY `idx_free_date` (`free_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='股票限售解禁日程';
 
 
--- `ry-vue`.stock_plate_stock 定义
+-- `ry-vue`.stock_recommend_pool 定义
 
-CREATE TABLE `stock_plate_stock` (
-                                     `plate_code` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '板块代码',
-                                     `stock_code` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '股票代码',
-                                     PRIMARY KEY (`plate_code`,`stock_code`),
-                                     KEY `idx_stock_code` (`stock_code`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='板块/概念-股票关联表';
+CREATE TABLE `stock_recommend_pool` (
+  `id`          bigint       NOT NULL AUTO_INCREMENT,
+  `target_date` date         NOT NULL COMMENT '目标交易日',
+  `stock_code`  varchar(20)  NOT NULL COMMENT '股票代码',
+  `stock_name`  varchar(50)  DEFAULT NULL COMMENT '股票名称',
+  `source`      varchar(20)  NOT NULL COMMENT '来源：TREND/LIMIT_UP/LOCKUP_GUIDED',
+  `score`       decimal(10,4) DEFAULT NULL COMMENT '池内评分',
+  `status`      varchar(20)  DEFAULT NULL COMMENT '波段状态/连板描述',
+  `reason`      varchar(200) DEFAULT NULL COMMENT '入池理由',
+  `extra`       varchar(500) DEFAULT NULL COMMENT '扩展信息（JSON）',
+  `create_time` datetime     DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_date_code_source` (`target_date`, `stock_code`, `source`),
+  KEY `idx_target_date` (`target_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='次日推荐池';

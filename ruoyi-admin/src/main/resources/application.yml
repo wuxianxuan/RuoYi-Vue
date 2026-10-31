@@ -162,22 +162,44 @@ xss:
 
 # 股票数据源配置
 stock:
-  # 同花顺个股行情 — 数据来自 stock-tools Node.js 抓取脚本
-  ths:
-    quote:
-      # 抓取结果 JSON 文件路径（由 stock-tools/fetchers/ths-quote.js 生成）
-      data-file: ../stock-tools/data/ths_quotes.json
-    funds:
-      # 概念资金流向 JSON 文件路径
-      concept-file: ../stock-tools/data/ths_funds_concept.json
-      # 行业资金流向 JSON 文件路径
-      industry-file: ../stock-tools/data/ths_funds_industry.json
-  # 同花顺板块排名
-  blockrank:
-    origin: https://m.10jqka.com.cn
-    referer: https://m.10jqka.com.cn/
-    autoCreateStock: true
-    fullReplace: true
+  # 腾讯批量行情（每日行情快照，替代原同花顺 JSON 行情）
+  quote:
+    tencent:
+      # 批量行情地址前缀，一次可带多只代码
+      batch-url: https://qt.gtimg.cn/q=
+      # 每批请求数量
+      batch-size: 60
+  # 限售解禁日程（东方财富 RPT_LIFT_STAGE）
+  lockup:
+    api-url: https://datacenter-web.eastmoney.com/api/data/v1/get
+    page-size: 500
+    # 每次同步未来多少天
+    sync-days: 120
+    # 风险过滤窗口：未来 N 天内
+    risk-window-days: 20
+    # 风险过滤阈值：解禁比例（占流通市值）>= 该值则剔除候选
+    risk-min-ratio: 0.05
+    # 解禁前「庄家引导拉升」子信号（实验性，严格过滤后给 2 个尾盘名额）
+    guided:
+      # 解禁日窗口：未来 5~45 天
+      window-start-days: 5
+      window-end-days: 45
+      # 解禁比例区间（占流通市值）
+      min-ratio: 0.03
+      max-ratio: 0.20
+      # 最多入池数量
+      size: 3
+  # 全市场股票列表/新股同步（基础页不再手工新增）
+  list-sync:
+    api-url: https://push2.eastmoney.com/api/qt/clist/get
+    page-size: 5000
+  # 日期分组清理：只清名称以 _yyyy-MM-dd 结尾的分组
+  group-clean:
+    keep-days: 30
+  # 数据完整性校验
+  data-check:
+    quote-min: 5000
+    kline-min: 5000
   # K线数据源
   kline:
     tencent:
@@ -185,28 +207,6 @@ stock:
   # 财联社数据源
   cls:
     sign: 6dfce97fbf19527e4957cca0127feafd
-  # 行业/概念资金流向推荐引擎配置
-  fund-flow-recommend:
-    # 回看交易日数（资金面）
-    lookback-days: 5
-    # 最少连续净流入天数
-    min-consecutive-days: 3
-    # 累计净流入阈值（亿）
-    min-net-inflow: 1.0
-    # 最少公司家数（0 表示不限制）
-    min-total: 0
-    # 趋势回看交易日数（计算区间涨幅与 MA5/MA10）
-    trend-window: 15
-    # 区间涨幅阈值(%)，仅当区间涨幅 > 该值才判定走势向上
-    min-trend-pct: 0
-    # 趋势面（区间涨幅）权重
-    weight-trend: 0.5
-    # 资金面（累计净流入）权重
-    weight-fund: 0.5
-    # 每个类型最多推荐数量
-    top-n: 10
-    # 涨幅TOP同步数量（每个类型取当前涨幅前 N 个，行业+概念共 2N 个）
-    top-zdf-n: 7
   # 趋势上涨选股配置（波段状态机算法）
   rising-trend:
     # 回看日历天数（重算锚点，需覆盖 MA/ATR 预热期 + 波段历史，默认120）
@@ -234,32 +234,29 @@ stock:
     markets: SH,SZ
     # 排除的板块代码前缀（逗号分隔），默认排除创业板(300/301)、科创板(688/689)
     exclude-code-prefixes: 300,301,688,689
-  # 趋势积累池日推荐配置
-  day-trading:
-    # 日推荐流动性过滤：换手率下限(%)，按流通市值分档
-    min-turnover-rate: 3.0
-    # 小盘（流通市值 < 50 亿）换手率门槛：要求更高
-    small-cap-turnover-rate: 5.0
-    # 大盘（流通市值 > 200 亿）换手率门槛：盘子大、换手天然低
-    large-cap-turnover-rate: 1.5
-    # 小盘/大盘市值分界（亿元）
-    small-cap-yi: 50
-    large-cap-yi: 200
-    # 每组最多输出数量（按评分取前N，<=0 表示不限）
-    top-n: 10
+    # 积累池分组名（119 从这里读取趋势候选）
+    group-name: 趋势上涨选股
+  # 次日推荐池（119 盘后生成，117 次日盘中消费）
+  recommend-pool:
+    # 推荐池分组名前缀（实际名称为 前缀_目标交易日）
+    group-name: 次日推荐池
+    # 趋势来源最多入池数量
+    trend-size: 30
+    # 涨停来源最多入池数量
+    limit-up-size: 30
     # 抗追高：近5日累计涨幅上限(%)、相对MA20乖离上限(%)
     max-gain-5d: 15.0
     max-bias-ma20: 12.0
-    # 是否生成「震荡」日推荐分组（默认关闭，只推上升组）
-    shake-group-enabled: false
-    # 市场环境过滤：上涨家数占比低于阈值时当天不生成日推荐（0~1）
-    # 回测（2026-07~10）显示该过滤为负贡献，默认关闭
-    market-filter-enabled: false
-    min-up-ratio: 0.30
-    # 首二板最多输出数量（按封板时间取前N，<=0 表示不限）
-    limit-up-top-n: 15
-    # 涨停首二板分组名（固定名，不含日期）
-    limit-up-group-name: 涨停首二板
+    # 换手率门槛（按流通市值分档）
+    min-turnover-rate: 3.0
+    small-cap-turnover-rate: 5.0
+    large-cap-turnover-rate: 1.5
+    small-cap-yi: 50
+    large-cap-yi: 200
+    # 是否排除 ST
+    exclude-st: true
+    # 排除的板块代码前缀
+    exclude-code-prefixes: 300,301,688,689
   # 分时K线增量落库（由 stockKlineSyncTask 在日K同步完成后调用）
   # 默认全市场采集（不确定后续分析用到哪些股票），只写库中尚不存在的 bar
   minute-collect:
@@ -342,10 +339,11 @@ stock:
     min-turnover-amount: 1.0
     # 理想涨幅(%)：评分时涨幅最优点，偏离越远得分越低
     ideal-gain: 2.5
-    # 每日最多推荐数量（按综合评分取前N，<=0 表示不限）
-    top-n: 10
-    # 是否把「昨日涨停首二板」纳入候选（波动大，想更稳可设为 false）
-    include-limit-up: true
+    # 117 最终推荐名额：趋势来源 5 只 + 涨停首二板来源 5 只（不跨来源补位）
+    trend-quota: 5
+    limit-up-quota: 5
+    # 解禁引导来源额外名额（实验性，蹭一波）
+    lockup-quota: 2
     # 并行抓取分时K线的线程数
     thread-pool-size: 16
     # 尾盘30分钟对应的5分钟bar数量

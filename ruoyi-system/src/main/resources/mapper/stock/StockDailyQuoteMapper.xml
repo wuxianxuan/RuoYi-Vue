@@ -38,6 +38,35 @@
         </foreach>
     </insert>
 
+    <insert id="batchUpsert" parameterType="java.util.List">
+        insert into stock_daily_quote (
+            stock_code, trade_date,
+            current_price, change_rate, price_change, speed,
+            turnover_rate, volume_ratio, amplitude,
+            turnover_amount, circulating_shares,
+            circ_market_cap, pe_ratio
+        ) values
+        <foreach collection="list" item="item" separator=",">
+            (#{item.stockCode}, #{item.tradeDate},
+             #{item.currentPrice}, #{item.changeRate}, #{item.priceChange}, #{item.speed},
+             #{item.turnoverRate}, #{item.volumeRatio}, #{item.amplitude},
+             #{item.turnoverAmount}, #{item.circulatingShares},
+             #{item.circMarketCap}, #{item.peRatio})
+        </foreach>
+        on duplicate key update
+            current_price = values(current_price),
+            change_rate = values(change_rate),
+            price_change = values(price_change),
+            speed = values(speed),
+            turnover_rate = values(turnover_rate),
+            volume_ratio = values(volume_ratio),
+            amplitude = values(amplitude),
+            turnover_amount = values(turnover_amount),
+            circulating_shares = values(circulating_shares),
+            circ_market_cap = values(circ_market_cap),
+            pe_ratio = values(pe_ratio)
+    </insert>
+
     <select id="selectRecentTradeDates" resultType="java.util.Date">
         select distinct trade_date
         from stock_daily_quote

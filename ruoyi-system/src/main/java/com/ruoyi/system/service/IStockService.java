@@ -6,90 +6,44 @@ import java.util.List;
 
 /**
  * 股票基础Service接口
- * 
+ *
  * @author ruoyi
- * @date 2026-05-30
  */
-public interface IStockService 
+public interface IStockService
 {
     /**
      * 查询股票基础
-     * 
-     * @param id 股票基础主键
-     * @return 股票基础
      */
-    public Stock selectStockById(Long id);
+    Stock selectStockById(Long id);
 
     /**
      * 查询股票基础列表
-     * 
-     * @param stock 股票基础
-     * @return 股票基础集合
      */
-    public List<Stock> selectStockList(Stock stock);
+    List<Stock> selectStockList(Stock stock);
 
     /**
-     * 新增股票基础
-     * 
-     * @param stock 股票基础
-     * @return 结果
-     */
-    public int insertStock(Stock stock);
-
-    /**
-     * 修改股票基础
-     * 
-     * @param stock 股票基础
-     * @return 结果
-     */
-    public int updateStock(Stock stock);
-
-    /**
-     * 批量删除股票基础
-     * 
-     * @param ids 需要删除的股票基础主键集合
-     * @return 结果
-     */
-    public int deleteStockByIds(Long[] ids);
-
-    /**
-     * 删除股票基础信息
+     * 基础页受限编辑：只更新备注和所属分组
      *
-     * @param id 股票基础主键
+     * @param id       股票主键
+     * @param remark   备注
+     * @param groupIds 分组 ID 数组（空数组表示清空分组）
+     * @param updateBy 更新人
      * @return 结果
      */
-    public int deleteStockById(Long id);
+    int updateStockProfile(Long id, String remark, Long[] groupIds, String updateBy);
 
     /**
      * 根据分组ID查询股票列表
-     *
-     * @param groupId 分组ID
-     * @return 股票列表
      */
-    public List<Stock> selectStocksByGroupId(Long groupId);
+    List<Stock> selectStocksByGroupId(Long groupId);
 
     /**
      * 查询股票所属的分组ID列表
-     *
-     * @param stockCode 股票代码
-     * @return 分组ID数组
      */
-    public Long[] selectGroupIdsByStockCode(String stockCode);
+    Long[] selectGroupIdsByStockCode(String stockCode);
 
     /**
      * 将股票关联到分组
-     *
-     * @param stockCode 股票代码
-     * @param groupIds 分组ID数组
-     * @return 结果
      */
-    public int insertStockGroups(String stockCode, Long[] groupIds);
-
-    /**
-     * 根据股票代码前缀匹配股票（仅SH/SZ市场，最多10条）
-     *
-     * @param keyword 股票代码前缀
-     * @return 股票列表
-     */
-    public List<Stock> autocompleteStockCode(String keyword);
+    int insertStockGroups(String stockCode, Long[] groupIds);
 }

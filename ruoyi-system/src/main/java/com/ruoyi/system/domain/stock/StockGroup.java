@@ -16,9 +16,6 @@ public class StockGroup extends BaseEntity {
     @NotBlank(message = "分组名称不能为空")
     private String groupName;
 
-    /** 排序 */
-    private Integer sortOrder;
-
     /** 分组包含的股票代码列表（仅用于前端传参） */
     private String[] stockCodes;
 }

@@ -189,8 +189,24 @@ public class StockTailRecommendEvalServiceImpl implements IStockTailRecommendEva
      */
     private void logSummary()
     {
-        logCohort("推荐组", recommendRecordMapper.selectEvaluatedRecent(true, RECENT_LIMIT));
-        logCohort("被挡组", recommendRecordMapper.selectEvaluatedRecent(false, RECENT_LIMIT));
+        List<StockTailRecommendRecord> picked = recommendRecordMapper.selectEvaluatedRecent(true, RECENT_LIMIT);
+        List<StockTailRecommendRecord> rejected = recommendRecordMapper.selectEvaluatedRecent(false, RECENT_LIMIT);
+        logCohort("推荐组", picked);
+        logCohort("推荐组-趋势", filterSource(picked, "TREND"));
+        logCohort("推荐组-涨停", filterSource(picked, "LIMIT_UP"));
+        logCohort("推荐组-解禁", filterSource(picked, "LOCKUP_GUIDED"));
+        logCohort("被挡组", rejected);
+    }
+
+    private List<StockTailRecommendRecord> filterSource(List<StockTailRecommendRecord> rows, String source)
+    {
+        if (rows == null)
+        {
+            return new ArrayList<>();
+        }
+        return rows.stream()
+                .filter(r -> source.equals(r.getSource()))
+                .collect(Collectors.toList());
     }
 
     private void logCohort(String label, List<StockTailRecommendRecord> rows)

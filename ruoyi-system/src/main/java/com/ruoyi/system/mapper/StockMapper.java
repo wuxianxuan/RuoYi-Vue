@@ -31,38 +31,16 @@ public interface StockMapper
     public List<Stock> selectStockList(Stock stock);
 
     /**
-     * 新增股票基础
-     * 
-     * @param stock 股票基础
-     * @return 结果
+     * 只更新备注（基础页受限编辑）
      */
-    public int insertStock(Stock stock);
-
-    /**
-     * 修改股票基础
-     * 
-     * @param stock 股票基础
-     * @return 结果
-     */
-    public int updateStock(Stock stock);
-
-    /**
-     * 删除股票基础
-     * 
-     * @param id 股票基础主键
-     * @return 结果
-     */
-    public int deleteStockById(Long id);
-
-    /**
-     * 批量删除股票基础
-     * 
-     * @param ids 需要删除的数据主键集合
-     * @return 结果
-     */
-    public int deleteStockByIds(Long[] ids);
+    int updateStockRemark(@Param("id") Long id, @Param("remark") String remark, @Param("updateBy") String updateBy);
 
     void batchInsertListIgnoreSame(List<Stock> insertList);
+
+    /**
+     * 批量补齐股票身份信息（新股 insert，已存在只更新名称/市场）
+     */
+    int batchInsertStockIdentity(List<Stock> list);
 
     public List<Stock> selectStocksByGroupId(Long groupId);
 
@@ -73,8 +51,6 @@ public interface StockMapper
     public int deleteStockGroupsByStockCode(@Param("stockCode") String stockCode);
 
     public List<Stock> selectStocksNotInGroup(@Param("groupId") Long groupId, @Param("stock") Stock stock);
-
-    public List<Stock> selectStockByCodePrefix(@Param("keyword") String keyword);
 
     /**
      * 根据市场列表查询股票

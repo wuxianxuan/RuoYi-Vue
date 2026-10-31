@@ -7,7 +7,6 @@
     <resultMap type="StockGroup" id="StockGroupResult">
         <result property="id"          column="id"          />
         <result property="groupName"   column="group_name"  />
-        <result property="sortOrder"   column="sort_order"  />
         <result property="createBy"    column="create_by"   />
         <result property="createTime"  column="create_time" />
         <result property="updateBy"    column="update_by"   />
@@ -16,7 +15,7 @@
     </resultMap>
 
     <sql id="selectGroupVo">
-        select id, group_name, sort_order, create_by, create_time, update_by, update_time, remark
+        select id, group_name, create_by, create_time, update_by, update_time, remark
         from stock_group
     </sql>
 
@@ -27,7 +26,7 @@
                 AND group_name like concat('%', #{groupName}, '%')
             </if>
         </where>
-        order by sort_order asc, id desc
+        order by update_time desc, id desc
     </select>
 
     <select id="selectGroupById" parameterType="Long" resultMap="StockGroupResult">
@@ -38,16 +37,14 @@
     <insert id="insertGroup" parameterType="StockGroup" useGeneratedKeys="true" keyProperty="id">
         insert into stock_group (
         <if test="groupName != null and groupName != ''">group_name,</if>
-        <if test="sortOrder != null">sort_order,</if>
         <if test="remark != null and remark != ''">remark,</if>
         <if test="createBy != null and createBy != ''">create_by,</if>
-        create_time
+        create_time, update_time
         ) values (
         <if test="groupName != null and groupName != ''">#{groupName},</if>
-        <if test="sortOrder != null">#{sortOrder},</if>
         <if test="remark != null and remark != ''">#{remark},</if>
         <if test="createBy != null and createBy != ''">#{createBy},</if>
-        sysdate()
+        sysdate(), sysdate()
         )
     </insert>
 
@@ -55,12 +52,15 @@
         update stock_group
         <set>
             <if test="groupName != null and groupName != ''">group_name = #{groupName},</if>
-            <if test="sortOrder != null">sort_order = #{sortOrder},</if>
             <if test="remark != null">remark = #{remark},</if>
             <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
             update_time = sysdate()
         </set>
         where id = #{id}
+    </update>
+
+    <update id="touchGroup">
+        update stock_group set update_time = sysdate() where id = #{groupId}
     </update>
 
     <delete id="deleteGroupById" parameterType="Long">
@@ -108,7 +108,15 @@
         <foreach item="stockCode" collection="stockCodes" open="(" separator="," close=")">
             #{stockCode}
         </foreach>
-        order by sgs.stock_code, g.sort_order
+        order by sgs.stock_code, g.update_time desc, g.id desc
+    </select>
+
+    <select id="selectExpiredDatedGroups" resultMap="StockGroupResult">
+        select id, group_name, create_by, create_time, update_by, update_time, remark
+        from stock_group
+        where group_name regexp '_[0-9]{4}-[0-9]{2}-[0-9]{2}(_上升|_震荡)?$'
+          and create_time &lt; date_sub(curdate(), interval #{days} day)
+        order by create_time asc
     </select>
 
 </mapper>

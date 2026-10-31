@@ -34,6 +34,9 @@ public class StockTailRecommendRecord
     /** 股票名称 */
     private String stockName;
 
+    /** 来源：TREND（趋势）/ LIMIT_UP（涨停首二板） */
+    private String source;
+
     /** 是否被推荐：1=推荐，0=仅记录（候选/被挡） */
     private Boolean picked;
 

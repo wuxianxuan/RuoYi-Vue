@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.StockRecommendPoolMapper">
+
+    <resultMap type="StockRecommendPool" id="StockRecommendPoolResult">
+        <result property="id"         column="id"          />
+        <result property="targetDate" column="target_date" />
+        <result property="stockCode"  column="stock_code"  />
+        <result property="stockName"  column="stock_name"  />
+        <result property="source"     column="source"      />
+        <result property="score"      column="score"       />
+        <result property="status"     column="status"      />
+        <result property="reason"     column="reason"      />
+        <result property="extra"      column="extra"       />
+        <result property="createTime" column="create_time" />
+    </resultMap>
+
+    <insert id="batchUpsert" parameterType="java.util.List">
+        insert into stock_recommend_pool (
+            target_date, stock_code, stock_name, source, score, status, reason, extra, create_time
+        ) values
+        <foreach collection="list" item="item" separator=",">
+            (#{item.targetDate}, #{item.stockCode}, #{item.stockName}, #{item.source},
+             #{item.score}, #{item.status}, #{item.reason}, #{item.extra}, sysdate())
+        </foreach>
+        on duplicate key update
+            stock_name = values(stock_name),
+            score = values(score),
+            status = values(status),
+            reason = values(reason),
+            extra = values(extra)
+    </insert>
+
+    <delete id="deleteByTargetDate">
+        delete from stock_recommend_pool where target_date = #{targetDate}
+    </delete>
+
+    <select id="selectByTargetDate" resultMap="StockRecommendPoolResult">
+        select id, target_date, stock_code, stock_name, source, score, status, reason, extra, create_time
+        from stock_recommend_pool
+        where target_date = #{targetDate}
+        order by source asc, score desc, stock_code asc
+    </select>
+
+    <select id="selectLatestTargetDateBefore" resultType="java.util.Date">
+        select max(target_date) from stock_recommend_pool where target_date &lt;= #{date}
+    </select>
+
+</mapper>
